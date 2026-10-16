@@ -2096,7 +2096,9 @@ fn main() {
 		panic(err)
 	}
 	// Several parser workers, as a machine with more cores runs it.
-	return cmdexec.run_in('env', ['VJOBS=4', @VEXE, '-new-compiler', '-check', '-nocolor', '.'], dir)
+	return cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-check', '-nocolor', '.'], dir, {
+		'VJOBS': '4'
+	})
 }
 
 fn test_a_constraint_from_another_module_is_checked_at_the_call() {
