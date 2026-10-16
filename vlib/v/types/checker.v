@@ -16994,6 +16994,9 @@ fn (tc &TypeChecker) struct_field_declaration_pos(field flat.Node) token.Pos {
 }
 
 fn (tc &TypeChecker) anonymous_struct_embedded_type_pos(field flat.Node) token.Pos {
+	if field.typ == 0 {
+		return field.pos
+	}
 	file := tc.a.source_files[field.pos.id] or { return field.pos }
 	source := tc.source_texts_by_file[file.name] or { return field.pos }
 	start := int_min(int_max(field.pos.offset, 0), source.len)
@@ -20103,14 +20106,27 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		val_id := tc.a.child(&node, 1)
 		mut key_type := unknown_type('runtime loop variable in static comptime body')
 		mut value_type := key_type
-		// Metadata collections such as field.attrs have a known element type even
-		// before the enclosing reflection loop is unrolled against a concrete type.
-		if container_type := tc.comptime_static_metadata_expr_type(tc.a.child(&node, 2), var_name, loop_kind) {
-			clean := unalias_type(unwrap_pointer(container_type))
-			if clean is Array {
-				value_type = clean.elem_type
-				key_type = if int(val_id) >= 0 { Type(int_) } else { value_type }
+		// Metadata collections and fields with a common concrete type can bind
+		// their element type before the reflection loop is unrolled.
+		container_id := tc.a.child(&node, 2)
+		container_type := tc.comptime_static_metadata_expr_type(container_id, var_name, loop_kind) or {
+			tc.comptime_static_reflected_field_expr_type(container_id, var_name, field_cases) or {
+				key_type
 			}
+		}
+		mut clean := unalias_type(unwrap_pointer(container_type))
+		if clean is OptionType {
+			base := unalias_type(unwrap_pointer(clean.base_type))
+			if base is Array || base is ArrayFixed {
+				clean = base
+			}
+		}
+		if clean is Array {
+			value_type = clean.elem_type
+			key_type = if int(val_id) >= 0 { Type(int_) } else { value_type }
+		} else if clean is ArrayFixed {
+			value_type = clean.elem_type
+			key_type = if int(val_id) >= 0 { Type(int_) } else { value_type }
 		}
 		tc.insert_loop_var(key_id, key_type)
 		tc.insert_loop_var(val_id, value_type)
@@ -20458,6 +20474,18 @@ fn (tc &TypeChecker) comptime_static_reflected_field_expr_type(id flat.NodeId, v
 	node := tc.a.nodes[int(id)]
 	if node.kind == .paren && node.children_count > 0 {
 		return tc.comptime_static_reflected_field_expr_type(tc.a.child(&node, 0), var_name, field_cases)
+	}
+	if node.kind == .or_expr && node.children_count > 0 {
+		inner := unalias_type(tc.comptime_static_reflected_field_expr_type(tc.a.child(&node, 0), var_name, field_cases) or {
+			return none
+		})
+		if inner is OptionType {
+			return inner.base_type
+		}
+		if inner is ResultType {
+			return inner.base_type
+		}
+		return none
 	}
 	if node.kind == .call && node.children_count == 1 {
 		callee := tc.a.child_node(&node, 0)

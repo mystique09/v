@@ -18517,8 +18517,8 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				base_node := tc.a.child_node(fn_node, 0)
 				if base_node.kind == .ident && base_node.value == 'C' {
 					c_fn_name := 'C.${fn_node.value}'
-					if ret := tc.fn_ret_types[c_fn_name] {
-						return ret
+					if c_fn_name in tc.fn_ret_types {
+						return tc.call_info(c_fn_name, false).return_type
 					}
 					if ret := tc.fn_ret_types[fn_node.value] {
 						return ret

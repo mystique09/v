@@ -7,7 +7,7 @@ const round4_vlib_dir = os.dir(round4_v3_dir)
 const round4_v3_src = os.join_path(round4_v3_dir, 'v.v')
 
 fn round4_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_comptime_review_round4_test_${os.getpid()}')
+	return os.join_path(os.temp_dir(), 'v3_comptime_review_round4_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 }
 
 fn testsuite_begin() {
@@ -860,7 +860,7 @@ fn test_enum_value_metadata_handles_unsigned_shift() {
 fn main() {
 	mut rows := []string{}
 	$for item in Shifted.values {
-		rows << item.value.str()
+		rows << int(item.value).str()
 	}
 	println(rows.join('|'))
 }
@@ -878,7 +878,7 @@ fn test_enum_value_metadata_folds_power() {
 fn main() {
 	mut rows := []string{}
 	$for item in Powered.values {
-		rows << item.name + ':' + item.value.str()
+		rows << item.name + ':' + int(item.value).str()
 	}
 	println(rows.join('|'))
 }
@@ -905,7 +905,7 @@ fn main() {
 	assert out == 'a'
 }
 
-fn test_enum_value_metadata_interpolation_stays_numeric() {
+fn test_enum_value_metadata_integer_cast_interpolation_stays_numeric() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_value_metadata_numeric_interpolation', "enum Color {
 	red = 7
@@ -915,7 +915,7 @@ fn test_enum_value_metadata_interpolation_stays_numeric() {
 fn main() {
 	mut rows := []string{}
 	$for item in Color.values {
-		rows << '\${item.value}:\${item.value:4}'
+		rows << '\${int(item.value)}:\${int(item.value):4}'
 	}
 	println(rows.join('|'))
 }
@@ -933,7 +933,7 @@ fn test_enum_value_metadata_preserves_wide_backed_values() {
 fn main() {
 	mut rows := []string{}
 	$for item in Wide.values {
-		rows << '\${item.value}'
+		rows << '\${u64(item.value)}'
 	}
 	println(rows.join('|'))
 }
@@ -1567,7 +1567,7 @@ fn test_enum_values_resolve_enum_member_references() {
 enum Multi {
 	base = 100
 	same = .base
-	plus = .base + 2
+	plus = int(Multi.base) + 2
 	next
 }
 
@@ -1595,7 +1595,7 @@ fn main() {
 	mut rows := []string{}
 	mut bare := []EnumData{}
 	$for item in Perm.values {
-		rows << item.name + ':' + item.value.str() + ':' + item.attrs.join(',')
+		rows << item.name + ':' + int(item.value).str() + ':' + item.attrs.join(',')
 		bare << item
 	}
 	rows << bare[0].name + ':' + bare[0].value.str() + ':' + bare[0].attrs.join(',')

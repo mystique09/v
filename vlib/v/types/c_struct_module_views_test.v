@@ -4,6 +4,45 @@ import os
 import v.parser
 import v.pref
 
+fn test_c_calls_use_the_return_type_declared_in_the_current_module() {
+	root := os.join_path(os.vtmp_dir(), 'c_fn_return_views_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	first := os.join_path(root, 'first.c.v')
+	second := os.join_path(root, 'second.c.v')
+	os.write_file(first, 'module first
+struct C.Widget { value int }
+fn C.local_make() &C.Widget
+pub fn value() int { return C.local_make().value }
+')!
+	for invalid_void_dereference in [false, true] {
+		body := if invalid_void_dereference {
+			'pub fn value() int { return C.local_make().value }'
+		} else {
+			'pub fn value() voidptr { return C.local_make() }'
+		}
+		os.write_file(second, 'module second
+struct C.Widget { value int }
+fn C.local_make() voidptr
+${body}
+')!
+		for paths in [[first, second], [second, first]] {
+			mut p := parser.Parser.new(pref.new_preferences())
+			a := p.parse_files(paths)
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			mut tc := TypeChecker.new(a)
+			tc.collect(a)
+			_ = tc.check_semantics_opt(false)
+			if invalid_void_dereference {
+				assert tc.errors.len == 1, tc.errors.str()
+				assert tc.errors[0].msg == '`voidptr` has no property `value`', tc.errors.str()
+			} else {
+				assert tc.errors.len == 0, tc.errors.str()
+			}
+		}
+	}
+}
+
 fn test_c_struct_visibility_uses_the_current_modules_own_view() {
 	root := os.join_path(os.vtmp_dir(), 'c_struct_visibility_views_${os.getpid()}')
 	os.mkdir_all(root)!
