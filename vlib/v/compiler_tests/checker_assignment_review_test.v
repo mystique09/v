@@ -1,19 +1,33 @@
 import os
+import rand
 
 const checker_assignment_vexe = @VEXE
 const checker_assignment_tests_dir = os.dir(@FILE)
 const checker_assignment_v3_dir = os.dir(checker_assignment_tests_dir)
 const checker_assignment_vlib_dir = os.dir(checker_assignment_v3_dir)
 const checker_assignment_v3_src = os.join_path(checker_assignment_v3_dir, 'v.v')
+const checker_assignment_run_id = rand.ulid()
+
+fn checker_assignment_v3_binary() string {
+	suffix := $if windows { '.exe' } $else { '' }
+	return os.join_path(os.temp_dir(), 'v3_checker_assignment_review_${os.getpid()}_${checker_assignment_run_id}${suffix}')
+}
+
+fn testsuite_end() {
+	os.rm(checker_assignment_v3_binary()) or {}
+}
 
 fn checker_assignment_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_checker_assignment_review_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	v3_bin := checker_assignment_v3_binary()
+	if os.is_file(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([checker_assignment_vexe, '-gc', 'none', '-path',
 			'${checker_assignment_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${checker_assignment_v3_src}'])
 	assert build.exit_code == 0, build.output
+	assert os.is_file(v3_bin)
 	return v3_bin
 }
 
@@ -209,48 +223,71 @@ fn main() {
 	assert index_out == '1'
 }
 
-fn test_shadowed_capturing_fn_literal_marker_uses_nearest_binding() {
+fn test_capturing_fn_literal_markers_follow_sibling_bindings() {
 	v3_bin := checker_assignment_build_v3()
-	out := checker_assignment_run_good(v3_bin, 'capturing_fn_literal_shadowed_by_plain_fn', 'fn plain() int {
+	out := checker_assignment_run_good(v3_bin, 'capturing_fn_literal_before_plain_sibling', 'fn plain() int {
 	return 2
 }
 
 fn main() {
 	x := 1
-	f := fn [x] () int {
-		return x
-	}
 	mut callbacks := []fn () int{}
+	{
+		f := fn [x] () int {
+			return x
+		}
+		callbacks << f
+	}
 	{
 		f := plain
 		callbacks << f
 	}
-	assert callbacks[0]() == 2
-	assert f() == 1
+	assert callbacks[0]() == 1
+	assert callbacks[1]() == 2
 	println("ok")
 }
 ')
 	assert out == 'ok'
-	outer_out := checker_assignment_run_good(v3_bin,
-		'capturing_fn_literal_outer_marker_survives_shadow', 'fn plain() int {
+	reverse_out := checker_assignment_run_good(v3_bin,
+		'capturing_fn_literal_after_plain_sibling', 'fn plain() int {
 	return 2
 }
 
 fn main() {
 	x := 1
-	f := fn [x] () int {
-		return x
-	}
 	mut callbacks := []fn () int{}
 	{
 		f := plain
 		callbacks << f
 	}
-	callbacks << f
+	{
+		f := fn [x] () int {
+			return x
+		}
+		callbacks << f
+	}
 	assert callbacks[0]() == 2
 	assert callbacks[1]() == 1
 	println("ok")
 }
 ')
-	assert outer_out == 'ok'
+	assert reverse_out == 'ok'
+}
+
+fn test_capturing_fn_literal_cannot_be_shadowed_in_child_scope() {
+	v3_bin := checker_assignment_build_v3()
+	checker_assignment_run_bad(v3_bin, 'capturing_fn_literal_invalid_child_shadow', 'fn plain() int {
+	return 2
+}
+
+fn main() {
+	x := 1
+	f := fn [x] () int { return x }
+	{
+		f := plain
+		_ = f()
+	}
+	_ = f()
+}
+', 'redefinition of `f`')
 }

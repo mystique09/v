@@ -8,7 +8,8 @@ const c_fn_redecl_v3_vlib_dir = os.dir(c_fn_redecl_v3_dir)
 const c_fn_redecl_v3_src = os.join_path(c_fn_redecl_v3_dir, 'v.v')
 
 fn build_c_fn_redecl_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c_fn_redecl_${os.getpid()}_${rand.ulid()}')
+	suffix := $if windows { '.exe' } $else { '' }
+	v3_bin := os.join_path(os.temp_dir(), 'v3_c_fn_redecl_${os.getpid()}_${rand.ulid()}${suffix}')
 	result :=
 		os.exec([c_fn_redecl_v3_vexe, '-gc', 'none', '-path',
 			'${c_fn_redecl_v3_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${c_fn_redecl_v3_src}'])
@@ -70,8 +71,10 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 		os.rm(compatible_out) or {}
 		os.rm(compatible_out + '.c') or {}
 	}
+	// Check POSIX declarations and generated calls without requiring a host fcntl library.
 	compatible_result :=
-		os.exec([v3_bin, '-no-memory-limit', compatible_root, '-b', 'c', '-o', '${compatible_out}'])
+		os.exec([v3_bin, '-no-memory-limit', '-os', 'linux', compatible_root, '-b', 'c', '-o',
+			'${compatible_out}.c'])
 	assert compatible_result.exit_code == 0, compatible_result.output
 	compatible_c := os.read_file(compatible_out + '.c')!
 	fcntl_calls := compatible_c.split_into_lines().filter(it.contains('fcntl(-1'))
@@ -79,7 +82,7 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 	assert fcntl_calls[0].contains('(int)(arg)'), fcntl_calls[0]
 
 	empty_root := write_c_fn_redecl_v3_project('empty_struct_default', {
-		'main.v': 'struct Empty {}\n\n__global global_empty Empty\n\nfn make_empty() Empty {\n\treturn Empty{}\n}\n\nfn main() {\n\t_ := make_empty()\n\t_ = global_empty\n}\n'
+		'main.v': 'struct Empty {}\n\n__global global_empty Empty\n\nfn make_empty() Empty {\n\treturn Empty{}\n}\n\nfn main() {\n\tlocal := make_empty()\n\tassert unsafe { (&u8(&local))[0] } == 0\n\tassert unsafe { (&u8(&global_empty))[0] } == 0\n}\n'
 	})!
 	c_path := os.join_path(empty_root, 'main.c')
 	defer {
@@ -90,9 +93,15 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 	assert empty_result.exit_code == 0, empty_result.output
 	generated := os.read_file(c_path)!
 	assert !generated.contains('Empty){}'), generated
-	assert generated.contains('Empty){0}'), generated
-	global_initializers := generated.split_into_lines().filter(it.contains('global_empty = '))
-	assert global_initializers.len == 1, generated
-	global_initializer := global_initializers[0]
-	assert global_initializer.contains('{0}'), global_initializer
+	assert generated.contains('#define E_STRUCT 0'), generated
+	assert generated.contains('Empty){E_STRUCT}'), generated
+	global_declarations := generated.split_into_lines().filter(it.contains('Empty global_empty;'))
+	assert global_declarations.len == 1, generated
+	// Check zero initialization of returned and static storage, independent of C spelling.
+	bin := os.join_path(empty_root, 'empty_defaults')
+	compile := os.exec([v3_bin, '-no-memory-limit', '-enable-globals', os.join_path(empty_root,
+		'main.v'), '-b', 'c', '-o', bin])
+	assert compile.exit_code == 0, compile.output
+	run := os.exec([bin])
+	assert run.exit_code == 0, run.output
 }
