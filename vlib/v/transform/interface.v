@@ -175,7 +175,8 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name_id u32) u32 {
 	if raw_is_generic && raw_base in t.tc.interface_names {
 		return flat.source_type_id('${raw_base}[${raw_args.join(', ')}]')
 	}
-	if raw_clean in t.tc.interface_names {
+	if raw_clean in t.tc.interface_names
+		&& t.normalize_type_alias(raw_clean_source_id) == raw_clean_source_id {
 		return raw_clean_source_id
 	}
 	mut clean := flat.source_type_name(t.trim_all_pointer_type(t.normalize_type_alias(name_id)))

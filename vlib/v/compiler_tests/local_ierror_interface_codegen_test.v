@@ -15,7 +15,7 @@ fn build_v3() string {
 	return v3_bin
 }
 
-fn test_module_local_ierror_interface_is_not_builtin_ierror() {
+fn test_module_local_ierror_alias_is_not_builtin_ierror() {
 	v3_bin := build_v3()
 
 	root := os.join_path(os.temp_dir(), 'v3_local_ierror_interface_${os.getpid()}')
@@ -85,6 +85,7 @@ fn main() {
 	ref := pkg.make_ref()
 	println(pkg.show_ref(ref))
 	builtin := payload() or { panic(err) }
+	assert builtin.code() == 7
 	println(builtin.msg())
 }
 	') or {
@@ -92,15 +93,24 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_local_ierror_interface_input')
+	rejected := os.exec([v3_bin, '-check', src])
+	assert rejected.exit_code != 0, rejected.output
+	assert rejected.output.contains('cannot register interface `IError`, it is builtin interface type'), rejected.output
+	assert !rejected.output.contains('C compilation failed'), rejected.output
+	// The reserved interface cannot be redeclared, but a module-local alias is valid.
+	pkg_file := os.join_path(mod_dir, 'pkg.v')
+	pkg_source := os.read_file(pkg_file) or { panic(err) }
+	os.write_file(pkg_file, pkg_source.replace('pub interface IError {', 'pub interface LocalError {')
+		.replace('pub struct LocalErr {', 'pub type IError = LocalError\n\npub struct LocalErr {')) or { panic(err) }
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file('${bin}.c') or { '' }
-	assert c_code.contains('pkg__IError pkg__make'), c_code
-	assert c_code.contains('string pkg__show(pkg__IError err)'), c_code
-	assert c_code.contains('pkg__IError* pkg__make_ref'), c_code
-	assert c_code.contains('string pkg__show_ref(pkg__IError* err)'), c_code
+	assert c_code.contains('pkg__LocalError pkg__make'), c_code
+	assert c_code.contains('string pkg__show(pkg__LocalError err)'), c_code
+	assert c_code.contains('pkg__LocalError* pkg__make_ref'), c_code
+	assert c_code.contains('string pkg__show_ref(pkg__LocalError* err)'), c_code
 	assert !c_code.contains('\nIError pkg__make'), c_code
 	assert !c_code.contains('string pkg__show(IError err)'), c_code
 	assert !c_code.contains('\nIError* pkg__make_ref'), c_code

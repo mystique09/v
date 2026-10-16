@@ -32,3 +32,28 @@ fn test_type_aliases_with_short_name_rescans_a_stale_index() {
 	tc.type_aliases.set_id('bar.Id', flat.source_type_u64)
 	assert t.type_aliases_with_short_name('Id').map(it.name) == ['foo.Id', 'bar.Id']
 }
+
+fn test_registered_interfaces_take_precedence_over_unrelated_alias_suffixes() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['IError'] = true
+	tc.interface_names['Reader'] = true
+	tc.interface_names['pkg.LocalError'] = true
+	tc.type_aliases.set_id('pkg.IError', flat.source_type_id('pkg.LocalError'))
+	tc.type_aliases.set_id('pkg.Reader', flat.source_type_id('pkg.LocalError'))
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_type_alias_suffix_index()
+	for module_name in ['builtin', 'main', 'pkg', 'main'] {
+		t.cur_module = module_name
+		for name in ['IError', 'Reader'] {
+			expected := if module_name == 'pkg' { 'pkg.LocalError' } else { name }
+			for prefix in ['', '&', '!', '[]'] {
+				assert flat.source_type_name(t.normalize_type_alias(flat.source_type_id(prefix + name))) == prefix + expected
+			}
+			for prefix in ['', '&'] {
+				assert flat.source_type_name(t.resolve_interface_type_name(flat.source_type_id(prefix + name))) == expected
+			}
+			assert flat.source_type_name(t.normalize_type_alias(flat.source_type_id('pkg.${name}'))) == 'pkg.LocalError'
+		}
+	}
+}

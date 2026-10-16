@@ -1589,7 +1589,8 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 
 		return target
 	}
-	if typ in t.structs || t.sum_types.contains(typ) || typ in t.enum_types {
+	if typ in t.structs || t.sum_types.contains(typ) || typ in t.enum_types
+		|| typ in t.tc.interface_names {
 		return typ
 	}
 	if !typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
