@@ -220,10 +220,10 @@ fn main() {}
 		'unsupported generic declaration `helper`')
 
 	run_selfhost_bad(v3_bin, 'generic_interface_marker_only', '
-interface I[T] {}
+interface GenericInterface[T] {}
 fn main() {}
 	',
-		'unsupported generic declaration `I`')
+		'unsupported generic declaration `GenericInterface`')
 
 	run_selfhost_bad(v3_bin, 'generic_type_alias_marker_only', '
 type Alias[T] = int
@@ -447,17 +447,20 @@ fn main() {
 			value: 3
 		}
 	}
-	_ := b
+	assert b.value.value == 3
 }
 ') or {
 		panic(err)
 	}
 	one_letter_bin := os.join_path(os.temp_dir(), 'v3_gen_one_letter_concrete_arg')
 	one_letter_compile := os.exec([v3_bin, '${one_letter_src}', '-b', 'c', '-o', one_letter_bin])
+	assert one_letter_compile.exit_code == 0, one_letter_compile.output
 	assert !one_letter_compile.output.contains('unsupported generic'), one_letter_compile.output
 	assert !one_letter_compile.output.contains('type checker found'), one_letter_compile.output
 	one_letter_c := os.read_file(one_letter_bin + '.c') or { '' }
-	assert one_letter_c.contains('struct Box_A'), one_letter_c
+	assert one_letter_c.contains('struct main__Box_A {'), one_letter_c
+	one_letter_run := os.exec([one_letter_bin])
+	assert one_letter_run.exit_code == 0, one_letter_run.output
 
 	// transitive generic calls: outer[T] calls id[T]
 	run_generic_ok(v3_bin, 'run_transitive', '
