@@ -107,6 +107,14 @@ fn test_tcc_with_prod_requested_finds_tinycc_under_another_name() {
 	}
 	alias_path := os.join_path(root, 'cc_alias.exe')
 	os.cp(bundled, alias_path) or { panic(err) }
+	$if windows {
+		library := os.join_path(os.dir(bundled), 'libtcc.dll')
+		if os.is_file(library) {
+			os.cp(library, os.join_path(root, 'libtcc.dll')) or { panic(err) }
+		}
+	}
+	version := os.exec([alias_path, '-v'])
+	assert version.exit_code == 0, version.output
 	assert tcc_with_prod_requested(['-prod', '-cc', alias_path])
 	assert !tcc_with_prod_requested(['-cc', alias_path])
 }

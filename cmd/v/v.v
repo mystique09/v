@@ -1324,7 +1324,7 @@ fn ensure_v1_fallback(reason string, quiet_install bool) !string {
 		}
 		mut process := os.new_process(make_command)
 		process.set_args(['v1'])
-		process.set_environment(v1_fallback_make_environment(os.real_path(os.executable()), cache_parent, cached_launcher))
+		process.set_environment(v1_fallback_make_environment(os.real_path(os.executable()), cache_parent, cached_launcher)!)
 		process.set_work_folder(vroot)
 		if quiet_install {
 			// Mini-VLS responses use the diagnostic stream. Keep installer progress
@@ -1353,7 +1353,7 @@ fn ensure_v1_fallback(reason string, quiet_install bool) !string {
 	}
 }
 
-fn v1_fallback_make_environment(bootstrap string, cache_parent string, output string) map[string]string {
+fn v1_fallback_make_environment(bootstrap string, cache_parent string, output string) !map[string]string {
 	mut environment := os.environ()
 	// Keep path data out of make variable syntax and shell command text. The
 	// installer reads these inherited values directly without re-evaluating them.
@@ -1361,7 +1361,40 @@ fn v1_fallback_make_environment(bootstrap string, cache_parent string, output st
 	environment['V1_FALLBACK_BOOTSTRAP'] = bootstrap
 	environment['V1_FALLBACK_CACHE_DIR'] = cache_parent
 	environment['V1_FALLBACK_OUTPUT'] = output
+	$if windows {
+		shell := find_v1_fallback_shell() or {
+			return error('The V1 fallback installer needs a POSIX shell. Install Git for Windows or put MSYS2 sh on PATH.')
+		}
+		// Native GNU make otherwise runs these POSIX recipes through cmd.exe.
+		for key in environment.keys() {
+			if key.to_upper() in ['PATH', 'SHELL'] {
+				environment.delete(key)
+			}
+		}
+		environment['SHELL'] = shell.replace('\\', '/')
+		environment['PATH'] = os.dir(shell) + os.path_delimiter + os.getenv('PATH')
+		for key in ['V1_FALLBACK_BOOTSTRAP', 'V1_FALLBACK_CACHE_DIR', 'V1_FALLBACK_OUTPUT'] {
+			environment[key] = environment[key].replace('\\', '/')
+		}
+	}
 	return environment
+}
+
+fn find_v1_fallback_shell() ?string {
+	if shell := os.find_abs_path_of_executable('sh') {
+		return shell
+	}
+	// Git for Windows normally exposes only its cmd directory on PATH.
+	git := os.find_abs_path_of_executable('git') or { return none }
+	mut directory := os.dir(os.real_path(git))
+	for _ in 0 .. 4 {
+		candidate := os.join_path(directory, 'usr', 'bin', 'sh.exe')
+		if os.is_executable(candidate) {
+			return candidate
+		}
+		directory = os.dir(directory)
+	}
+	return none
 }
 
 fn v1_fallback_cache_parent() !string {

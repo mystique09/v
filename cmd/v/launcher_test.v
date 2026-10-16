@@ -287,7 +287,8 @@ fn test_windows_makev_keeps_the_v3_tcc_root_absolute() {
 	// The bootstrap compiler emits the stage C, which this script then links.
 	// The absolute tcc path reaches it through `!stage_vflags!`, asserted below.
 	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -gc none -g !stage_vflags! -o "%V_STAGE_C%" cmd/v')
-	assert source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v')
+	assert source.contains('set updated_vflags=-cc "!tcc_exe!"')
+	assert source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !updated_vflags! -o "%V_UPDATED%" cmd/v')
 	assert source.contains('set stage_vflags=-cc "!tcc_exe!"')
 	assert !source.contains('-cflags -Bthirdparty/tcc')
 }
@@ -443,11 +444,11 @@ fn test_v1_fallback_make_environment_preserves_special_path_characters() {
 	bootstrap := os.join_path(os.vtmp_dir(), "o'connor", r'$compiler')
 	cache_parent := os.join_path(os.vtmp_dir(), "o'connor", r'$cache')
 	output := os.join_path(cache_parent, v_version, r'$fallback')
-	environment := v1_fallback_make_environment(bootstrap, cache_parent, output)
+	environment := v1_fallback_make_environment(bootstrap, cache_parent, output)!
 	assert environment['VEXE'] == './v'
-	assert environment['V1_FALLBACK_BOOTSTRAP'] == bootstrap
-	assert environment['V1_FALLBACK_CACHE_DIR'] == cache_parent
-	assert environment['V1_FALLBACK_OUTPUT'] == output
+	assert environment['V1_FALLBACK_BOOTSTRAP'] == $if windows { bootstrap.replace('\\', '/') } $else { bootstrap }
+	assert environment['V1_FALLBACK_CACHE_DIR'] == $if windows { cache_parent.replace('\\', '/') } $else { cache_parent }
+	assert environment['V1_FALLBACK_OUTPUT'] == $if windows { output.replace('\\', '/') } $else { output }
 }
 
 fn test_v1_fallback_cache_without_a_home_is_private() {
@@ -716,6 +717,14 @@ fn test_prod_refuses_tinycc_under_another_name_once_it_resolves() {
 	// The name has no `tcc`, so only the resolved compiler gives it away.
 	alias_path := os.join_path(dir, 'cc_alias.exe')
 	os.cp(bundled, alias_path) or { panic(err) }
+	$if windows {
+		library := os.join_path(os.dir(bundled), 'libtcc.dll')
+		if os.is_file(library) {
+			os.cp(library, os.join_path(dir, 'libtcc.dll')) or { panic(err) }
+		}
+	}
+	version := os.exec([alias_path, '-v'])
+	assert version.exit_code == 0, version.output
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, 'fn main() {\n\tprintln(1)\n}\n') or { panic(err) }
 	// `-old-compiler` must refuse the alias too, before the compatibility compiler is started.

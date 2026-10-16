@@ -105,6 +105,9 @@ It replaces extracted `vc` and `thirdparty/tcc` directories without Git metadata
 fresh clones before updating them. Use `makev.bat --local` to build with existing dependencies
 without downloading or replacing them.
 
+Legacy compiler fallback installation also needs GNU Make and a POSIX shell. On Windows,
+V detects `sh` on `PATH` or the shell bundled with Git for Windows and uses it for the installer.
+
 (Like the note above says, on Windows, use `makev.bat`, instead of `make`.)
 
 Now try running `./v run examples/hello_world.v` (or `v run examples/hello_world.v` in cmd shell).
