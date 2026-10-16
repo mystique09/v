@@ -7,7 +7,7 @@ const for_multi_init_vlib_dir = os.dir(for_multi_init_v3_dir)
 const for_multi_init_v3_src = os.join_path(for_multi_init_v3_dir, 'v.v')
 
 fn for_multi_init_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
@@ -23,7 +23,7 @@ fn for_multi_init_run_bad(v3_bin string, name string, source string, expected st
 	src := os.join_path(os.temp_dir(), 'v3_for_multi_init_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_${name}_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	result := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert result.exit_code != 0, result.output
@@ -95,7 +95,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_input_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
@@ -134,7 +134,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_for_unsigned_inclusive_bound_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
@@ -187,7 +187,7 @@ fn test_unsigned_inclusive_for_mutable_bound_keeps_post_semantics() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_for_unsigned_mutable_bound_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
@@ -239,7 +239,7 @@ fn test_labeled_c_style_for_multi_init_flow_targets_named_loop() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_labeled_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
@@ -285,7 +285,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_for_post_labeled_continue_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
@@ -331,7 +331,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_for_post_outer_labeled_continue_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
@@ -380,7 +380,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_pair_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
@@ -417,7 +417,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_for_post_pair_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
@@ -461,7 +461,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_for_post_match_continue_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
@@ -504,7 +504,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_for_post_select_continue_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
@@ -644,7 +644,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_for_multi_init_selector_lhs_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output

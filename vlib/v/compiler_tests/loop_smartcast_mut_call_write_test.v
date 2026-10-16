@@ -7,7 +7,7 @@ const loop_smartcast_vlib_dir = os.dir(loop_smartcast_v3_dir)
 const loop_smartcast_v3_src = os.join_path(loop_smartcast_v3_dir, 'v.v')
 
 fn loop_smartcast_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_loop_smartcast_mut_call_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_loop_smartcast_mut_call_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
@@ -23,7 +23,7 @@ fn loop_smartcast_run_bad(v3_bin string, name string, source string, expected st
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
@@ -35,7 +35,7 @@ fn loop_smartcast_run_good(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output

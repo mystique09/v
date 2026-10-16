@@ -1,4 +1,5 @@
 import os
+import v.cmdexec
 import v.flat
 import v.parser
 import v.pref
@@ -14,8 +15,10 @@ fn proxy_to_local_v3_if_needed() bool {
 		return false
 	}
 	cmd := 'V3_MATCH_GENERIC_PATTERN_INNER=1 ${os.quoted_path(local_vexe)} -gc none -path "${local_vlib_dir}|@vlib|@vmodules" ${os.quoted_path(@FILE)}'
-	result := os.exec(['env', 'V3_MATCH_GENERIC_PATTERN_INNER=1', local_vexe, '-gc', 'none', '-path',
-		'${local_vlib_dir}' + '|@vlib|@vmodules', @FILE])
+	result := cmdexec.run_in_merged_with_env(local_vexe, ['-gc', 'none', '-path',
+		'${local_vlib_dir}|@vlib|@vmodules', @FILE], '', {
+		'V3_MATCH_GENERIC_PATTERN_INNER': '1'
+	})
 	assert result.exit_code == 0, result.output
 	return true
 }

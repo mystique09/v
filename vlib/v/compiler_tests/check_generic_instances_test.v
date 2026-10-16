@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.cmdexec
 
 // A generic function is checked with its type parameters left open, where
 // `x.name` cannot be judged. A check also has to check each concrete instance,
@@ -390,8 +391,10 @@ fn build_program(name string, source string) os.Result {
 	}
 	path := os.join_path(dir, 'main.v')
 	os.write_file(path, generic_prelude + source) or { panic(err) }
-	return os.exec(['env', 'V_MACOS_V3_NO_FALLBACK=1', @VEXE, '-new-compiler', '-nocolor', '-o',
-		os.join_path(dir, 'main'), path])
+	return cmdexec.run_in_merged_with_env(@VEXE, ['-new-compiler', '-nocolor', '-o',
+		os.join_path(dir, 'main'), path], '', {
+		'V_MACOS_V3_NO_FALLBACK': '1'
+	})
 }
 
 // A build reports the errors of an instance where a check does, as V1 did: the

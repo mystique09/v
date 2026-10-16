@@ -5,7 +5,7 @@ const interface_return_tests_dir = os.dir(@FILE)
 const interface_return_v3_dir = os.dir(interface_return_tests_dir)
 const interface_return_v3_src = os.join_path(interface_return_v3_dir, 'v.v')
 const interface_return_v3_bin = os.join_path(os.temp_dir(),
-	'v3_interface_return_alias_${os.getpid()}')
+	'v3_interface_return_alias_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 
 fn build_interface_return_v3() string {
 	if os.is_executable(interface_return_v3_bin) {

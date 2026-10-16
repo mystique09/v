@@ -10,7 +10,7 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
-const err_scope_v3_bin = os.join_path(os.temp_dir(), 'v3_err_scope_test_${os.getpid()}')
+const err_scope_v3_bin = os.join_path(os.temp_dir(), 'v3_err_scope_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 
 const prelude = "module main
 

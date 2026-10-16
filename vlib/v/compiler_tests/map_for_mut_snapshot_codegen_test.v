@@ -7,7 +7,7 @@ const map_for_mut_vlib_dir = os.dir(map_for_mut_v3_dir)
 const map_for_mut_v3_src = os.join_path(map_for_mut_v3_dir, 'v.v')
 
 fn map_for_mut_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_map_for_mut_snapshot_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_map_for_mut_snapshot_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
@@ -22,7 +22,7 @@ fn map_for_mut_run_good(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	os.rm(bin) or {}
+	os.rm(bin + $if windows { '.exe' } $else { '' }) or {}
 	os.rm(bin + '.c') or {}
 	compile := os.exec([v3_bin, '-enable-globals', '-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
