@@ -561,6 +561,9 @@ fn run_cmd(cmd string) ! {
 fn try_compile(cmd string) bool {
 	result := os.exec(os.split_args(cmd) or { panic(err) })
 	if result.exit_code != 0 {
+		if result.output.len > 0 {
+			eprintln(result.output.trim_space())
+		}
 		return false
 	}
 	if result.output.len > 0 {
@@ -660,13 +663,13 @@ fn bootstrap_self_build(vroot string, args []string, final_binary string) ! {
 	mut bootstrap_args := ['-no-parallel']
 	bootstrap_args << with_output_arg(initial_bootstrap_args(args), bootstrap_v2)
 	bootstrap_v1_cmd := os.join_path('.', bootstrap_v1)
-	bootstrap_v2_cmd := '${os.quoted_path(bootstrap_v1_cmd)} ${bootstrap_args.join(' ')} ${os.quoted_path(full_v_cli_source)}'
+	bootstrap_v2_cmd := compose_v_cmd(bootstrap_v1_cmd, bootstrap_args, full_v_cli_source)
 	run_cmd(bootstrap_v2_cmd) or {
 		return error('bootstrap fallback failed while building v2.\n${err.msg()}')
 	}
 	final_args := with_output_arg(args, final_binary)
 	bootstrap_v2_cmd_path := os.join_path('.', bootstrap_v2)
-	final_cmd := '${os.quoted_path(bootstrap_v2_cmd_path)} ${final_args.join(' ')} ${os.quoted_path(full_v_cli_source)}'
+	final_cmd := compose_v_cmd(bootstrap_v2_cmd_path, final_args, full_v_cli_source)
 	run_cmd(final_cmd) or {
 		return error('bootstrap fallback failed while building the final compiler.\n${err.msg()}')
 	}
@@ -699,10 +702,16 @@ fn bootstrap_c_cmd(cc string, out_binary string, vc_source string) string {
 	// Portable VC snapshots have the full V1 compiler but no embedded V3 driver.
 	if os.user_os() == 'windows' {
 		parts << [os.quoted_path(cc), '-DCUSTOM_DEFINE_v1_fallback']
-		// vc/v_win.c calls BCryptGenRandom, so -lws2_32 alone fails to link, the same
-		// way GNUmakefile and makev.bat need -lbcrypt for this snapshot.
+		// Older snapshots declare these SDK-backed helpers without embedding their
+		// bodies. Keep the sources and libraries aligned with makev.bat.
+		bootstrap_root := os.dir(os.dir(vc_source))
 		parts << ['-std=c99', '-municode', '-w', '-o', os.quoted_path(out_binary),
-			os.quoted_path(vc_source), '-lws2_32', '-lbcrypt']
+			os.quoted_path(vc_source)]
+		for helper in ['vlib/time/ticks_windows.c', 'vlib/v/winthread_helper_windows.c',
+			'cmd/v/toolcache_windows_helpers.c'] {
+			parts << os.quoted_path(os.join_path(bootstrap_root, helper))
+		}
+		parts << ['-ladvapi32', '-lws2_32', '-lbcrypt', '-Wl,-stack=33554432']
 	} else {
 		compat_script := os.join_path(os.dir(os.dir(vc_source)), 'cmd', 'tools', 'vc_compat.sh')
 		parts << ['sh', os.quoted_path(compat_script), os.quoted_path(vc_source), os.quoted_path(cc),
