@@ -1,8 +1,10 @@
 module c
 
 import os
+import v.cmdexec
 import v.flat
 import v.pref
+import v.types
 
 fn windows_core_test_gen() FlatGen {
 	mut g := FlatGen.new()
@@ -19,6 +21,72 @@ fn test_windows_translation_unit_uses_headers_only_when_requested() {
 	headed.add_c_directive('main', '#include <windows.h>', false)
 	headed.emit_translation_unit_include_directives()
 	assert headed.sb.str().count('#include <windows.h>') == 1
+}
+
+fn test_windows_atomic_compatibility_uses_sdk_owned_types() {
+	for compiler in ['tinyc', 'tcc', 'C:/toolchain/tcc.exe', 'msvc'] {
+		mut g := windows_core_test_gen()
+		g.ccompiler = compiler
+		g.preamble()
+		code := g.sb.str()
+		assert code.contains('#include <windows.h>'), compiler
+		assert !code.contains('typedef u32 DWORD;'), compiler
+	}
+}
+
+fn test_windows_atomic_sdk_selection_preserves_headerless_modes() {
+	for compiler in ['tinyc', 'msvc'] {
+		mut bootstrap := windows_core_test_gen()
+		bootstrap.ccompiler = compiler
+		bootstrap.output_cross_c = true
+		bootstrap.compile_defines = ['v3_headerless_bootstrap']
+		assert !bootstrap.c_directives_use_system_libc(), compiler
+		mut target_libc := windows_core_test_gen()
+		target_libc.ccompiler = compiler
+		target_libc.target_libc_headers = true
+		assert !target_libc.c_directives_use_system_libc(), compiler
+	}
+	for compiler in ['gcc', 'clang'] {
+		mut g := windows_core_test_gen()
+		g.ccompiler = compiler
+		assert !g.c_directives_use_system_libc(), compiler
+	}
+}
+
+fn test_windows_atomic_manual_header_preflight_matches_compiler() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('windows', 'amd64') or { panic(err) }
+	for compiler in ['tinyc', 'tcc', 'C:/toolchain/tcc.exe', 'msvc', 'gcc', 'clang'] {
+		prefs.ccompiler = compiler
+		assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false) == (compiler !in [
+			'gcc',
+			'clang',
+		]), compiler
+	}
+}
+
+fn test_windows_tcc_builds_program_without_explicit_headers() {
+	$if !windows {
+		return
+	}
+	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_file(tcc) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'windows_tcc_atomic_sdk_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, "fn main() {\nvalues := [1, 2, 3]\nassert values.len == 3\nprintln('ok')\n}\n")!
+	executable := os.join_path(root, 'main.exe')
+	compiled := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-no-retry-compilation', '-gc',
+		'none', '-cc', tcc, '-o', executable, source])
+	assert compiled.exit_code == 0, compiled.output
+	ran := cmdexec.run(executable, [])
+	assert ran.exit_code == 0, ran.output
+	assert ran.output.trim_space() == 'ok', ran.output
 }
 
 fn test_windows_core_records_match_native_sdk() {

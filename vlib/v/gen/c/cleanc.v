@@ -76,6 +76,7 @@ pub fn uses_manual_stdlib_c_headers(a &flat.FlatAst, tc &types.TypeChecker, pref
 	g.a = a
 	g.tc = tc
 	g.target = prefs.target
+	g.ccompiler = prefs.ccompiler
 	g.output_cross_c = prefs.output_cross_c
 	g.no_builtin = prefs.no_builtin
 	g.object_file_mode = object_file_mode
@@ -19405,6 +19406,13 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 	}
 	if g.no_builtin || g.output_cross_c || g.object_file_mode
 		|| 'livemain' in g.compile_defines || 'sharedlive' in g.compile_defines {
+		return true
+	}
+	// These atomic implementations include windows.h even without a user include.
+	// Let the SDK own its types before the atomic compatibility header is emitted.
+	if g.target.os == 'windows'
+		&& (g.ccompiler == 'tinyc' || g.ccompiler.to_lower().contains('tcc')
+			|| g.ccompiler == 'msvc') {
 		return true
 	}
 	// These targets need SDK symbol renames, storage or constants that the
