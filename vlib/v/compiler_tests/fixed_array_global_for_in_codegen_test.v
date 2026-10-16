@@ -47,8 +47,8 @@ fn main() {
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('intgnums[3]'), generated
-	assert compact.contains('memmove(gnums,'), generated
+	int_ct := $if x32 { 'i32' } $else { 'i64' }
+	assert compact.contains('${int_ct}gnums[3]={6,7,8};'), generated
 	assert compact.contains('=gnums['), generated
 	assert !compact.contains('array_get(gnums,'), generated
 }
@@ -89,5 +89,6 @@ pub fn sum() int {
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('memmove(m__table,'), generated
+	int_ct := $if x32 { 'i32' } $else { 'i64' }
+	assert compact.contains('${int_ct}m__table[2]={5,0};'), generated
 }

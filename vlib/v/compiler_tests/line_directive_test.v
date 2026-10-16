@@ -70,13 +70,14 @@ fn test_debug_line_directives_in_c_follow_line_directives() {
 		assert build.exit_code == 0, build.output
 		generated := os.read_file(output)!
 		path := os.real_path(source).replace('\\', '/').replace('"', '\\"')
+		logical_path := os.real_path('app.zbr').replace('\\', '/').replace('"', '\\"')
 		// The function starts before the first directive.
 		assert generated.contains('#line 5 "${path}"\n'), flags.str()
-		assert generated.contains('#line 7 "app.zbr"\n'), flags.str()
-		assert generated.contains('#line 8 "app.zbr"\n'), flags.str()
-		assert generated.contains('#line 20 "app.zbr"\n'), flags.str()
-		assert generated.contains('#line 30 "app.zbr"\n'), flags.str()
-		assert generated.contains('#line 40 "app.zbr"\n'), flags.str()
+		assert generated.contains('#line 7 "${logical_path}"\n'), flags.str()
+		assert generated.contains('#line 8 "${logical_path}"\n'), flags.str()
+		assert generated.contains('#line 20 "${logical_path}"\n'), flags.str()
+		assert generated.contains('#line 30 "${logical_path}"\n'), flags.str()
+		assert generated.contains('#line 40 "${logical_path}"\n'), flags.str()
 		assert !generated.contains('#line 7 "${path}"'), flags.str()
 	}
 }

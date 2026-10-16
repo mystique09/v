@@ -59,12 +59,15 @@ fn main() {
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
+	int_ct := $if x32 { 'i32' } $else { 'i64' }
 	assert compact.contains('memmove(main__nums,'), generated
 	assert compact.contains('memmove(main__items,'), generated
-	assert compact.contains('introw[3];'), generated
+	assert compact.contains('${int_ct}row[3];'), generated
 	assert compact.contains('memmove(row,main__nums['), generated
-	assert !compact.contains('introw=main__nums['), generated
-	assert !compact.contains('<0;'), generated
+	assert !compact.contains('${int_ct}row=main__nums['), generated
+	loop_body := generated.all_after('sum_nums(void) {').all_before('\n}')
+	assert loop_body.contains(' < 2;') && loop_body.contains(' < 3;'), generated
+	assert !loop_body.replace(' ', '').contains('<0;'), generated
 	deparenthesized := compact.replace('(', '').replace(')', '')
 	assert deparenthesized.contains('returnmain__items[0]->value+main__items[1]->value;'), generated
 }
@@ -204,8 +207,9 @@ fn main() {
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
 	// Cache-split builds keep inferred array constants dynamic to preserve the module ABI.
-	assert compact.contains('constinta__vals[3]') || generated.contains('Array a__vals'), generated
-	assert compact.contains('constintb__vals[3]') || generated.contains('Array b__vals'), generated
+	int_ct := $if x32 { 'i32' } $else { 'i64' }
+	assert compact.contains('const${int_ct}a__vals[3]') || generated.contains('Array a__vals'), generated
+	assert compact.contains('const${int_ct}b__vals[3]') || generated.contains('Array b__vals'), generated
 }
 
 fn test_aliased_import_dynamic_const_use_stays_dynamic() {

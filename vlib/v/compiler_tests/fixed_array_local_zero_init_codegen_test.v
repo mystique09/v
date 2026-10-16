@@ -56,16 +56,18 @@ fn main() {
 	assert run.output.trim_space() == '12'
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('intdirect[4]={0};')
-		|| compact.contains('intdirect[4];memmove(direct,(int[4]){0},sizeof(direct));')
-		|| compact.contains('intdirect[4];memmove(direct,(int[4]){0,0,0,0},sizeof(direct));'), generated
+	int_ct := $if x32 { 'i32' } $else { 'i64' }
+	assert compact.contains('${int_ct}direct[4]={0};')
+		|| compact.contains('${int_ct}direct[4];memmove(direct,(${int_ct}[4]){0},sizeof(direct));')
+		|| compact.contains('${int_ct}direct[4];memmove(direct,(${int_ct}[4]){0,0,0,0},sizeof(direct));'), generated
 
-	assert compact.contains('intwrapped[4]={0};') || compact.contains('intwrapped[4]={0,0,0,0};'), generated
+	assert compact.contains('${int_ct}wrapped[4]={0};')
+		|| compact.contains('${int_ct}wrapped[4]={0,0,0,0};'), generated
 	assert compact.contains('void*handles[32]={0};')
 		|| compact.contains('void*handles[32]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};'), generated
 
-	assert compact.contains('intnested[2][3]={0};')
-		|| compact.contains('intnested[2][3]={{0,0,0},{0,0,0}};'), generated
+	assert compact.contains('${int_ct}nested[2][3]={0};')
+		|| compact.contains('${int_ct}nested[2][3]={{0,0,0},{0,0,0}};'), generated
 	assert !generated.contains(' = (Array_fixed_'), generated
 	assert !generated.contains('Array_fixed_voidptr_32 handles'), generated
 }
