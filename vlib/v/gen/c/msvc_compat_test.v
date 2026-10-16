@@ -1,5 +1,8 @@
 module c
 
+import os
+import v.cmdexec
+
 // msvc_norm collapses whitespace, so the tests do not depend on the exact layout.
 fn msvc_norm(s string) string {
 	return s.fields().join(' ')
@@ -109,6 +112,61 @@ fn test_static_initializers_drop_compound_literals() {
 	assert out.contains('const P q = {0};')
 	assert out.contains('const A3 a = {1, 2, 3};')
 	assert out.contains('P* r = &(P){1, 2};')
+}
+
+fn test_static_local_initializers_drop_compound_literals() {
+	src := 'typedef struct P P;\ntypedef struct Outer Outer;\ntypedef int A3[3];\nint f(void) {\nstatic P zero = (P){0};\nstatic Outer nested = (Outer){.inner = (P){1, 2}};\nstatic A3 values = (A3){3, 4, 5};\nP local = (P){6, 7};\nstatic P* pointer = &(P){8, 9};\nreturn ++zero.x + nested.inner.x + values[0] + local.x + pointer->x;\n}\n'
+	out := msvc_norm(msvc_compat_c_source(src))
+	assert out.contains('static P zero = {0};')
+	assert out.contains('static Outer nested = {.inner = {1, 2}};')
+	assert out.contains('static A3 values = {3, 4, 5};')
+	assert out.contains('P local = (P){6, 7};')
+	assert out.contains('static P* pointer = &(P){8, 9};')
+}
+
+fn test_static_local_inside_statement_expression_keeps_static_storage() {
+	src := 'typedef struct P P;\nint f(void) { return ({ static P state = (P){}; ++state.x; }); }\n'
+	out := msvc_norm(msvc_compat_c_source(src))
+	assert out.contains('static P state__vmsvc1 = {0};')
+	assert out.contains('return (++state__vmsvc1.x);')
+}
+
+fn test_lowered_static_locals_keep_values_between_calls() {
+	compiler := os.find_abs_path_of_executable('clang') or {
+		os.find_abs_path_of_executable('gcc') or {
+			tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', $if windows { 'tcc.exe' } $else { 'tcc' })
+			if !os.is_file(tcc) {
+				return
+			}
+			tcc
+		}
+	}
+	dir := os.join_path(os.vtmp_dir(), 'msvc_static_local_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'main.c')
+	binary := os.join_path(dir, 'main.exe')
+	os.write_file(source, msvc_compat_c_source('typedef struct Counter Counter;
+struct Counter { int value; };
+typedef int Pair[2];
+typedef struct State State;
+struct State { Counter counter; Pair pair; };
+int next(void) {
+	static Counter zero = (Counter){};
+	static State state = (State){.counter = (Counter){7}, .pair = (Pair){2, 3}};
+	Counter automatic = (Counter){};
+	++automatic.value;
+	++zero.value;
+	++state.counter.value;
+	++state.pair[0];
+	return zero.value * 100 + state.counter.value * 10 + state.pair[0] + automatic.value;
+}
+int main(void) { return next() != 184 || next() != 295; }
+'))!
+	compiled := cmdexec.run(compiler, ['-std=c11', source, '-o', binary])
+	assert compiled.exit_code == 0, compiled.output
+	executed := cmdexec.run(binary, [])
+	assert executed.exit_code == 0, executed.output
 }
 
 fn test_strings_comments_and_directives_are_kept() {

@@ -126,7 +126,7 @@ pub fn msvc_compat_c_source(src string) string {
 			depth--
 			if depth == 0 && body_start >= 0 {
 				body, next_uid := msvc_lower_function_body(src, body_start, i + 1, struct_names,
-					uid)
+					array_names, uid)
 				out.write_string(body)
 				uid = next_uid
 				region_start = i + 1
@@ -413,7 +413,7 @@ fn msvc_lower_file_scope(src string, start int, end int, struct_names map[string
 
 // msvc_lower_function_body lowers one function body. `uid` numbers the renamed locals;
 // the next free number is returned with the body.
-fn msvc_lower_function_body(src string, start int, end int, struct_names map[string]bool, uid int) (string, int) {
+fn msvc_lower_function_body(src string, start int, end int, struct_names map[string]bool, array_names map[string]bool, uid int) (string, int) {
 	toks := msvc_tokenize(src, start, end)
 	if toks.len < 2 {
 		return src[start..end], uid
@@ -423,7 +423,7 @@ fn msvc_lower_function_body(src string, start int, end int, struct_names map[str
 		toks: toks
 		uid:  uid
 	}
-	if !l.prepare(struct_names) {
+	if !l.prepare(struct_names, array_names) {
 		return src[start..end], uid
 	}
 	mut sb := strings.new_builder(end - start + (end - start) / 4)
@@ -458,7 +458,7 @@ fn (mut l MsvcLowerer) new_name(prefix string) string {
 
 // prepare computes matching brackets, statement-expression starts and the local rewrites.
 // It returns false when the body needs no changes.
-fn (mut l MsvcLowerer) prepare(struct_names map[string]bool) bool {
+fn (mut l MsvcLowerer) prepare(struct_names map[string]bool, array_names map[string]bool) bool {
 	n := l.toks.len
 	l.match_idx = []int{len: n, init: -1}
 	l.se_prefix = []int{len: n + 1}
@@ -486,7 +486,11 @@ fn (mut l MsvcLowerer) prepare(struct_names map[string]bool) bool {
 	}
 	mut changed := false
 	mut is_init_brace := []bool{len: n}
+	mut static_decl_end := 0
 	for k in 0 .. n {
+		if l.is(k, 'static') {
+			static_decl_end = l.scan_to_semicolon(k)
+		}
 		mut se := 0
 		if l.is(k, '(') && l.is(k + 1, '{') && l.match_idx[k + 1] == l.match_idx[k] - 1 {
 			se = 1
@@ -498,6 +502,18 @@ fn (mut l MsvcLowerer) prepare(struct_names map[string]bool) bool {
 		}
 		if l.is(k, '(') && k + 2 < n && l.toks[k + 1].kind == .ident && l.is(k + 2, ')')
 			&& l.text(k + 1) in struct_names && !l.is(k + 3, '{') && l.is_cast_position(k) {
+			for d in k .. k + 3 {
+				l.dirty[d] = true
+				l.dirty_text[d] = ''
+			}
+			changed = true
+		}
+		// Static locals have the same constant-initializer restriction as globals.
+		// Keep address-taking compound literals and automatic locals as expressions.
+		if k < static_decl_end && l.is(k, '(') && k + 3 < n
+			&& l.toks[k + 1].kind == .ident && l.is(k + 2, ')') && l.is(k + 3, '{')
+			&& (l.text(k + 1) in struct_names || l.text(k + 1) in array_names)
+			&& k > 0 && l.text(k - 1) in ['=', ',', '{'] {
 			for d in k .. k + 3 {
 				l.dirty[d] = true
 				l.dirty_text[d] = ''
