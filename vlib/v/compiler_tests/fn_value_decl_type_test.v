@@ -1,13 +1,26 @@
 import os
+import rand
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
+const fn_value_test_root = os.join_path(os.temp_dir(), 'v3_fn_value_${os.getpid()}_${rand.ulid()}')
+
+fn testsuite_begin() {
+	os.mkdir_all(fn_value_test_root) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(fn_value_test_root) or {}
+}
 
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_fn_value_decl_type_test')
+	v3_bin := os.join_path(fn_value_test_root, 'compiler') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${v3_src}'])
@@ -16,9 +29,9 @@ fn build_v3() string {
 }
 
 fn run_good(v3_bin string, name string, src string) string {
-	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	good_src := os.join_path(fn_value_test_root, 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
-	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	good_bin := os.join_path(fn_value_test_root, 'v3_${name}')
 	compile := os.exec([v3_bin, '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
@@ -28,9 +41,9 @@ fn run_good(v3_bin string, name string, src string) string {
 }
 
 fn run_bad(v3_bin string, name string, src string) string {
-	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	bad_src := os.join_path(fn_value_test_root, 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
-	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	bad_bin := os.join_path(fn_value_test_root, 'v3_${name}')
 	compile := os.exec([v3_bin, '${bad_src}', '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: reached C compiler: ${compile.output}'
@@ -38,9 +51,9 @@ fn run_bad(v3_bin string, name string, src string) string {
 }
 
 fn gen_c(v3_bin string, name string, src string) string {
-	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	src_path := os.join_path(fn_value_test_root, 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
-	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	c_path := os.join_path(fn_value_test_root, 'v3_${name}.c')
 	os.rm(c_path) or {}
 	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, '${name}: C output failed: ${compile.output}'
@@ -55,7 +68,7 @@ fn write_project_file(root string, rel string, src string) {
 }
 
 fn write_project(name string, files map[string]string) string {
-	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+	root := os.join_path(fn_value_test_root, 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
 	}
@@ -68,7 +81,7 @@ fn write_project(name string, files map[string]string) string {
 
 fn run_project_good(v3_bin string, name string, files map[string]string) string {
 	root := write_project(name, files)
-	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	good_bin := os.join_path(fn_value_test_root, 'v3_${name}')
 	main_path := os.join_path(root, 'main.v')
 	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
@@ -80,7 +93,7 @@ fn run_project_good(v3_bin string, name string, files map[string]string) string 
 
 fn run_project_bad(v3_bin string, name string, files map[string]string) string {
 	root := write_project(name, files)
-	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	bad_bin := os.join_path(fn_value_test_root, 'v3_${name}')
 	main_path := os.join_path(root, 'main.v')
 	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', bad_bin])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
@@ -90,7 +103,7 @@ fn run_project_bad(v3_bin string, name string, files map[string]string) string {
 
 fn gen_project_c(v3_bin string, name string, files map[string]string) string {
 	root := write_project(name, files)
-	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	c_path := os.join_path(fn_value_test_root, 'v3_${name}.c')
 	os.rm(c_path) or {}
 	main_path := os.join_path(root, 'main.v')
 	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', c_path])
@@ -503,7 +516,7 @@ fn main() {
 '
 	})
 	assert bad_output.contains('cannot use `fn (string) int`'), bad_output
-	assert bad_output.contains('expected `fn (int) int`'), bad_output
+	assert bad_output.contains('as `fn (int) int` in argument 1 to `invoke`'), bad_output
 }
 
 fn test_resolved_fn_value_wins_over_imported_const_suffix() {
@@ -637,7 +650,7 @@ fn test_fn_value_expected_context_respects_value_shadowing() {
 
 fn test_variadic_fn_value_marker_uses_nearest_binding() {
 	v3_bin := build_v3()
-	output := run_bad(v3_bin, 'variadic_fn_value_shadowed_by_plain_fn', 'fn variadic(values ...int) int {
+	source := 'fn variadic(values ...int) int {
 	return values.len
 }
 
@@ -646,23 +659,29 @@ fn one(value int) int {
 }
 
 fn main() {
-	cb := variadic
+	{
+		cb := variadic
+		assert cb(1, 2) == 2
+	}
 	{
 		cb := one
 		_ := cb(1, 2)
 	}
-	assert cb(1, 2) == 2
 }
-')
+'
+	output := run_bad(v3_bin, 'variadic_fn_value_shadowed_by_plain_fn', source)
 	assert output.contains('expected 1 argument, but got 2'), output
+	assert run_good(v3_bin, 'variadic_fn_value_separate_scope_bindings', source.replace('_ := cb(1, 2)',
+		'println(cb(41))')) == '41'
 }
 
 fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	v3_bin := build_v3()
 	optional_c := gen_c(v3_bin, 'fn_value_optional_void_local_c', optional_fn_src)
 	assert !optional_c.contains('__v_option f = __anon_fn'), optional_c
+	assert !optional_c.contains('__v_result f = __anon_fn'), optional_c
 	assert !optional_c.contains('i64 f = __anon_fn'), optional_c
-	assert optional_c.contains('typedef struct __v_option (*_fn_ptr_'), optional_c
+	assert optional_c.contains('typedef struct __v_result (*_fn_ptr_'), optional_c
 	assert optional_c.contains(' f = __anon_fn_'), optional_c
 
 	optional_callback_c := gen_c(v3_bin, 'fn_value_optional_callback_param_c',
