@@ -1075,6 +1075,7 @@ pub mut:
 	checked_comptime_method_calls map[string]bool
 	comptime_method_calls_by_decl map[int]map[int]bool
 	check_concrete_generic_bodies bool                  // `-check` checks the concrete clones of the program's generics for fields and methods their types lack
+	check_build_generic_bodies    bool                  // Windows builds validate concrete program instances during their normal transform
 	library_instances             int                   // the instances of library generics that such a check cloned
 	library_headers               int                   // how many of them it cloned without their bodies (see transform.LibraryBodies)
 	library_bodies_kept_for       string                // why every one of them kept its body, when one had to
@@ -1571,6 +1572,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		checked_comptime_method_calls:         map[string]bool{}
 		comptime_method_calls_by_decl:         map[int]map[int]bool{}
 		check_concrete_generic_bodies:         tc.check_concrete_generic_bodies
+		check_build_generic_bodies:            tc.check_build_generic_bodies
 		check_generic_bodies:                  tc.check_generic_bodies
 		module_diagnostic_root:                tc.module_diagnostic_root
 		autofree_mode:                         tc.autofree_mode

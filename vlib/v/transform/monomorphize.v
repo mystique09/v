@@ -4823,7 +4823,7 @@ fn (t &Transformer) node_file_or(idx int, fallback string) string {
 		if file_id != 0 {
 			return t.node_context_text(file_id)
 		}
-		if t.node_module_map_cache[idx] == 0 {
+		if idx < t.node_module_map_cache.len && t.node_module_map_cache[idx] == 0 {
 			owner := t.node_context_owner(idx)
 			if owner >= 0 {
 				return t.node_file_or(owner, fallback)
@@ -5143,7 +5143,8 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args_i
 	if check_fixture_semantics {
 		concrete_error_count = t.tc.errors.len
 		t.tc.check_concrete_fn_semantics(int(clone_id), decl.file, decl.module)
-	} else if !isnil(t.tc) && t.tc.check_concrete_generic_bodies && instance_satisfies
+	} else if !isnil(t.tc)
+		&& (t.tc.check_concrete_generic_bodies || t.tc.check_build_generic_bodies) && instance_satisfies
 		&& decl.file in t.tc.diagnostic_files {
 		t.tc.check_concrete_instance_members(int(clone_id), decl.file, decl.module, concrete_args_source_ids)
 	}

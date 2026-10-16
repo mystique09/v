@@ -1278,6 +1278,7 @@ fn test_recorded_generic_arg_ids_preserve_ownership_and_invalidate_misses() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.spec_args_misses = &SpecArgsMissCache{}
 	key := flat.source_type_id('Record_int')
 	assert t.recorded_type_specialization_args(key) == none
 	assert t.spec_args_misses.misses[key]
@@ -1308,6 +1309,7 @@ fn test_numeric_specialized_type_decoder_preserves_cached_argument_storage() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.struct_generic_params['Box'] = ['T']
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.generic_spec_decode_cache = &TypeLookupCache{}
 	name := flat.source_type_id('Box_int')
 	mut args := t.decode_single_generic_specialized_type_args(name) or { panic('missing decoded arguments') }
 	assert args == [flat.source_type_int]

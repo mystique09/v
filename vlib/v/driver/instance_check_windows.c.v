@@ -3,9 +3,10 @@ module driver
 import v.flat
 import v.types
 
-// start_program_instance_check needs fork(): on Windows a build leaves the
-// instances of the program's generics to the C compiler, as before.
+// Windows validates instances as the build specializes them. Unlike the separate
+// check, this must retain library bodies for the following C generation.
 fn start_program_instance_check(mut a flat.FlatAst, mut tc types.TypeChecker, is_checker_fixture bool, fatal_errors bool, message_limit int, skip_notices bool) ProgramInstanceCheck {
+	tc.check_build_generic_bodies = true
 	return ProgramInstanceCheck{}
 }
 
