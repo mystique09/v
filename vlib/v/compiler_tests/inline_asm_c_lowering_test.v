@@ -11,7 +11,7 @@ fn inline_asm_tmp_path(name string) string {
 }
 
 fn build_v3_inline_asm() string {
-	v3_bin := inline_asm_tmp_path('compiler')
+	v3_bin := inline_asm_tmp_path('compiler') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
@@ -186,7 +186,7 @@ fn main() {
 		; =r (character)
 	}
 	values := [u64(11), 22]!
-	base := &values[0]
+	base := unsafe { &values[0] }
 	index := u64(8)
 	mut indexed := u64(0)
 	asm amd64 {
@@ -237,11 +237,11 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	$if arm64 {
 		assert c_source.contains('"mov x0, %[a]\\n\\t"'), c_source
 		assert c_source.contains('"str w0, [%[ptr]]\\n\\t"'), c_source
-		assert c_source.contains('"mov %[character], \'A\'\\n\\t"'), c_source
+		assert c_source.contains('"mov %[character], #\'A\'\\n\\t"'), c_source
 	} $else $if amd64 {
 		assert c_source.contains('"mov %[a], %%rax\\n\\t"'), c_source
 		assert c_source.contains('"movq \$7, (%[ptr])\\n\\t"'), c_source
-		assert c_source.contains('"mov \'A\', %[character]\\n\\t"'), c_source
+		assert c_source.contains('"mov \$\'A\', %[character]\\n\\t"'), c_source
 		assert c_source.contains('"movq 0(%[base], %[index], 1), %[indexed]\\n\\t"'), c_source
 		assert c_source.contains('".byte 0x27, 0x35, 0x0f, 0x48\\n\\t"'), c_source
 		assert !c_source.contains('.byte \\\$0x27'), c_source
@@ -804,7 +804,7 @@ fn test_intel_asm_rejects_narrow_register_operands() {
 }
 ')
 	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('structured `intel` assembly cannot represent a 32-bit register operand'), generate.output
+	assert generate.output.contains('hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers'), generate.output
 }
 
 fn test_intel_asm_validates_enum_backing_widths() {
@@ -815,13 +815,13 @@ fn test_intel_asm_validates_enum_backing_widths() {
 fn main() {
 	value := Kind.one
 	asm amd64 intel {
-		mov eax, value
+		lzcnt rax, value
 		; ; r (value)
 	}
 }
 ')
 	assert default_generate.exit_code != 0, default_generate.output
-	assert default_generate.output.contains('structured `intel` assembly cannot represent a 32-bit register operand'), default_generate.output
+	assert default_generate.output.contains('named operand `value` has 32-bit type `Kind`, but instruction `lzcnt` operates on the 64-bit register'), default_generate.output
 
 	narrow_generate, _ := generate_inline_asm_c('intel_narrow_enum_register_program', 'enum Kind as u8 {
 	one
@@ -830,13 +830,13 @@ fn main() {
 fn main() {
 	value := Kind.one
 	asm amd64 intel {
-		mov al, value
+		lzcnt rax, value
 		; ; r (value)
 	}
 }
 ')
 	assert narrow_generate.exit_code != 0, narrow_generate.output
-	assert narrow_generate.output.contains('structured `intel` assembly cannot represent a 8-bit register operand'), narrow_generate.output
+	assert narrow_generate.output.contains('named operand `value` has 8-bit type `Kind`, but instruction `lzcnt` operates on the 64-bit register'), narrow_generate.output
 
 	wide_generate, c_source := generate_inline_asm_c('intel_wide_enum_register_program', 'enum Kind as u64 {
 	one
@@ -845,13 +845,13 @@ fn main() {
 fn main() {
 	value := Kind.one
 	asm amd64 intel {
-		mov rax, value
+		lzcnt rax, value
 		; ; r (value)
 	}
 }
 ')
 	assert wide_generate.exit_code == 0, wide_generate.output
-	assert c_source.contains('"mov rax, %V[value]\\n\\t"'), c_source
+	assert c_source.contains('"lzcnt rax, %V[value]\\n\\t"'), c_source
 }
 
 fn test_arm64_asm_accepts_operand_keywords() {

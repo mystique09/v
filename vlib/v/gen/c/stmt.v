@@ -4860,7 +4860,7 @@ fn split_c_inline_asm_operands(source string) []string {
 fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]bool, is_extended bool, is_directive bool) string {
 	operand := source.trim_space()
 	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
-		return "'${operand[1..operand.len - 1]}'"
+		return lower_c_inline_asm_immediate("'${operand[1..operand.len - 1]}'", arch, is_directive)
 	}
 	if label := c_inline_asm_local_label_reference(operand) {
 		return label
@@ -4877,17 +4877,21 @@ fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]boo
 		return lower_c_inline_asm_address(operand[1..operand.len - 1], arch, aliases, is_extended)
 	}
 	if is_c_inline_asm_number(operand) {
-		return if is_directive {
-			operand
-		} else if arch in ['arm64', 'aarch64'] {
-			'#${operand}'
-		} else if is_c_inline_asm_x86_arch(arch) {
-			'\$${operand}'
-		} else {
-			operand
-		}
+		return lower_c_inline_asm_immediate(operand, arch, is_directive)
 	}
 	return lower_c_inline_asm_atoms(operand, arch, aliases, is_extended)
+}
+
+fn lower_c_inline_asm_immediate(operand string, arch string, is_directive bool) string {
+	return if is_directive {
+		operand
+	} else if arch in ['arm64', 'aarch64'] {
+		'#${operand}'
+	} else if is_c_inline_asm_x86_arch(arch) {
+		'\$${operand}'
+	} else {
+		operand
+	}
 }
 
 fn lower_c_inline_asm_x86_segment_address(source string, arch string, aliases map[string]bool, is_extended bool) ?string {

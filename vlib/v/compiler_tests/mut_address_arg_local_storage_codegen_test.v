@@ -123,12 +123,18 @@ fn main() {
 	result := os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-nocache', '-warn-about-allocs',
 		'-o', out_path, main_path])
 	assert result.exit_code == 0, result.output
-	moved := 'allocation (local moved to the heap: its address escapes)'
+	moved := 'allocation (local moved to the heap: '
 	on_heap := ['result_on_heap', 'forwarded_result_on_heap', 'pair_on_heap', 'on_heap']
 	assert result.output.count(moved) == on_heap.len, result.output
 	for name in on_heap {
 		line := source.all_before('mut ${name} := ').count('\n') + 1
-		assert result.output.contains('main.v:${line}:6: warning: ${moved}'), '${name}\n${result.output}'
+		// The returned Entry pointer also exposes its fixed-array field's storage.
+		reason := if name == 'on_heap' {
+			'its fixed array storage may escape)'
+		} else {
+			'its address escapes)'
+		}
+		assert result.output.contains('main.v:${line}:6: warning: ${moved}${reason}'), '${name}\n${result.output}'
 	}
 	c_code := os.read_file(out_path) or { panic(err) }
 	assert c_code.contains('main__Entry on_stack = '), 'on_stack was moved to the heap'
