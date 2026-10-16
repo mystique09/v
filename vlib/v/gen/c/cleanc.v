@@ -5608,7 +5608,9 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 				&& include_arg == '<sys/mman.h>'
 		}
 		'os/os_stat_windows.c.v' { return include_arg == '<sys/stat.h>' }
-		'os/os_windows.c.v' { return include_arg in ['<process.h>', '<sys/utime.h>'] }
+		'os/os_windows.c.v' {
+			return include_arg in ['<process.h>', '<sys/utime.h>', '<winerror.h>']
+		}
 		'os/password_windows.c.v', 'v/driver/windows_icon_windows.c.v',
 		'v/driver/replace_file_windows.c.v' {
 			return include_arg == '<windows.h>'
@@ -10851,6 +10853,16 @@ fn (mut g FlatGen) emit_preserved_c_directive_at(directives []string, index int,
 		}
 		emitted_includes[key] = true
 	}
+	// Lifted header configuration must not change the macro state seen by local
+	// headers that still appear at their original position after the preamble.
+	mut context_macros := []string{}
+	for line in prefix {
+		_, name := c_macro_directive_info(line)
+		if name.len > 0 && name !in context_macros {
+			context_macros << name
+			g.writeln('#pragma push_macro("${name}")')
+		}
+	}
 	for line in prefix {
 		g.writeln(line)
 	}
@@ -10861,6 +10873,9 @@ fn (mut g FlatGen) emit_preserved_c_directive_at(directives []string, index int,
 	}
 	for _ in 0 .. c_lifted_include_context_depth(prefix) {
 		g.writeln('#endif')
+	}
+	for name in context_macros.reverse() {
+		g.writeln('#pragma pop_macro("${name}")')
 	}
 	return true
 }
@@ -21555,6 +21570,8 @@ fn (mut g FlatGen) headerless_windows_constants() {
 	g.writeln('#define VK_INSERT 0x2d')
 	g.writeln('#define VK_DELETE 0x2e')
 	g.writeln('#define ERROR_ACCESS_DENIED 5')
+	g.writeln('#define ERROR_INVALID_PARAMETER 87')
+	g.writeln('#define ERROR_INSUFFICIENT_BUFFER 122')
 	g.writeln('#define ERROR_CLASS_ALREADY_EXISTS 1410')
 	g.writeln('#define HWND_MESSAGE ((void*)-3)')
 	g.writeln('#define MB_ERR_INVALID_CHARS 0x00000008U')

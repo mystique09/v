@@ -88,7 +88,7 @@ static inline int optional_backend_value(void) { return 9; }
 #endif
 ')
 	c_out := os.join_path(root, 'out.c')
-	result := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
+	result := os.exec([v3_bin, '-cross', os.join_path(root, 'main.v'), '-b', 'c', '-o', '${c_out}'])
 	assert result.exit_code == 0, result.output
 	c_code := os.read_file(c_out) or { panic(err) }
 	assert c_code.contains('#include "comment_only.h"'), c_code

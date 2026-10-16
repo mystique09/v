@@ -67,6 +67,38 @@ fn test_windows_atomic_manual_header_preflight_matches_compiler() {
 	}
 }
 
+fn test_headerless_windows_os_keeps_error_constants_without_sdk() {
+	cc := $if windows {
+		os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	} $else {
+		os.find_abs_path_of_executable('cc') or { return }
+	}
+	if !os.is_file(cc) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'headerless_windows_errors_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	mut g := windows_core_test_gen()
+	g.compiler_vroot = '/vroot'
+	g.output_cross_c = true
+	g.compile_defines = ['v3_headerless_bootstrap']
+	g.headerless_windows_constants()
+	code := g.sb.str()
+	assert !code.contains('#include')
+	source := os.join_path(root, 'errors.c')
+	binary := os.join_path(root, 'errors' + $if windows { '.exe' } $else { '' })
+	os.write_file(source, code + '\nint main(void) { return ERROR_INVALID_PARAMETER != 87 || ERROR_INSUFFICIENT_BUFFER != 122; }\n')!
+	compiled := cmdexec.run(cc, ['-o', binary, source])
+	assert compiled.exit_code == 0, compiled.output
+	ran := cmdexec.run(binary, [])
+	assert ran.exit_code == 0, ran.output
+	assert g.core_native_header_is_redeclared('/vroot/vlib/os/os_windows.c.v', '<winerror.h>')
+	assert !g.core_native_header_is_redeclared('/project/main.c.v', '<winerror.h>')
+	g.compile_defines = []
+	assert !g.core_native_header_is_redeclared('/vroot/vlib/os/os_windows.c.v', '<winerror.h>')
+}
+
 fn test_windows_tcc_builds_program_without_explicit_headers() {
 	$if !windows {
 		return
