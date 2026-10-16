@@ -10339,6 +10339,7 @@ To debug issues in the generated binary (flag: `-b c`), you can pass these flags
   can show you the generated C source code. The C backend retains its per-build
   `.<executable>.v3cc.*` directory beside the executable so the source paths in
   the debug information remain available. You can remove this directory after debugging.
+  On Windows, non-production C debug builds use the bundled TCC compiler by default.
 - `-showcc` - prints the C command that is used to build the program.
 - `-show-c-output` - prints the output, that your C compiler produced
   while compiling your program.

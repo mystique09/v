@@ -170,7 +170,13 @@ fn test_cached_tcc_main_command_refuses_production_mode() ! {
 			&& it.contains('src.c') && it.contains('tcc'))
 		assert commands.len == 1, result.output
 		command := cmdexec.split_args(commands[0].trim_space()[2..])!
-		assert command.any(it.contains('v3_module_cache_') && it.ends_with('.o')), commands[0]
+		cached_modules := command.any(it.contains('v3_module_cache_') && it.ends_with('.o'))
+		$if windows {
+			// Windows deliberately compiles one unit; its TCC module cache is disabled.
+			assert !cached_modules, commands[0]
+		} $else {
+			assert cached_modules, commands[0]
+		}
 		assert ('-O3' in command) == ('-prod' in mode && '-no-prod-options' !in mode), commands[0]
 		assert '-flto' !in command, commands[0]
 	}
@@ -1385,6 +1391,47 @@ fn test_v3_tcc_flag_plan_restores_native_local_prefix() {
 	} else {
 		assert '-I/usr/local/include' in plan.before_inputs
 		assert '-L/usr/local/lib' in plan.before_inputs
+	}
+}
+
+fn test_v3_windows_c_debug_build_uses_bundled_tcc() {
+	$if !windows {
+		return
+	}
+	bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !v3_usable_tcc_compiler(bundled_tcc) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_windows_c_debug_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	old_vflags := os.getenv_opt('VFLAGS')
+	os.unsetenv('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, "fn main() {\nvalues := [1, 2, 3]\nassert values.len == 3\n\$if debug { println('debug enabled') } \$else { panic('debug disabled') }\n}\n")!
+	for debug_flag in ['-cg', '-cdebug'] {
+		for cache_args in [[]string{}, ['-nocache']] {
+			output_name := '${debug_flag[1..]}_${cache_args.len}.exe'
+			output := os.join_path(root, output_name)
+			mut args := ['-new-compiler', '-no-retry-compilation', debug_flag, '-showcc']
+			args << cache_args
+			args << ['-o', output, source]
+			build := cmdexec.run_in(v3_driver_test_executable(), args, root)
+			assert build.exit_code == 0, build.output
+			assert build.output.replace('\\', '/').contains('thirdparty/tcc/tcc.exe'), build.output
+			assert build.output.contains(' -g '), build.output
+			run_result := cmdexec.run(output, [])
+			assert run_result.exit_code == 0, run_result.output
+			assert run_result.output.trim_space() == 'debug enabled', run_result.output
+			build_dirs := os.ls(root)!.filter(it.starts_with('.${output_name}.v3cc.'))
+			assert build_dirs.len == 1, '${build_dirs}'
+			assert os.is_file(os.join_path(root, build_dirs[0], 'src.c'))
+		}
 	}
 }
 

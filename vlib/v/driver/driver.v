@@ -15894,11 +15894,14 @@ pub fn run(args []string) {
 		// complete C unit has no native-source flags, compile that unit instead of
 		// linking the cached objects. Otherwise use the system compiler for the
 		// smaller cached main unit.
+		// Windows selects bundled TCC for C debug builds too; compile the complete
+		// unit with its debug flags instead of skipping straight to the fallback.
 		if !tried_tcc && (!is_prod || cache_with_tcc) && !needs_objective_c && !link_uses_non_c_language
 			&& (!tcc_link_has_incompatible_objects || cache_full_tcc_source.len > 0)
 			&& target_args.len == 0 && (!c_compiler_explicit || explicit_tcc)
 			&& (!cache_state.manager.enabled || cache_full_tcc_source.len > 0 || cache_with_tcc)
-			&& !is_c_debug && dump_c_flags.len == 0 && (explicit_tcc || implicit_tcc != '') {
+			&& (!is_c_debug || prefs.normalized_target_os() == 'windows')
+			&& dump_c_flags.len == 0 && (explicit_tcc || implicit_tcc != '') {
 			tried_tcc = true
 			tcc_path := if explicit_tcc && c_compiler in ['tcc', 'tinyc'] && bundled_tcc_available {
 				bundled_tcc
