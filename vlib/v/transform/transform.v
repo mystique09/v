@@ -22096,6 +22096,15 @@ fn (mut t Transformer) materialize_value_branch_operand(id flat.NodeId) flat.Nod
 	pending_mark := t.pending_stmts.len
 	value := t.transform_value_operand(id)
 	if value != id && t.operand_hoists_value_branch(value) {
+		// A lowered `unsafe { match ... }` still contains statement branches,
+		// but its value tail is now a typed temp. Preserve that completed lowering
+		// and give redispatch a plain operand, instead of restoring the source block.
+		if t.is_value_match_or_if_operand(id) && !t.is_value_match_or_if_operand(value) {
+			value_type := t.node_type(value)
+			if value_type != 0 && value_type != flat.source_type_void {
+				return t.snapshot_transformed_expr_for_reuse(value, value_type, 'branch_operand')
+			}
+		}
 		if t.pending_stmts.len > pending_mark {
 			t.pending_stmts = t.pending_stmts[..pending_mark].clone()
 		}
@@ -23293,6 +23302,7 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 	if node.children_count == 0 {
 		return id
 	}
+	mut snapshotted_base_is_temporary := false
 	full_key := t.expr_key(id)
 	if full_key.len > 0 {
 		contexts := t.smartcasts_for(full_key)
@@ -23305,7 +23315,7 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		return lowered
 	}
 	if lowered := t.lower_gated_scalar_index(node) {
-		return t.lower_owned_array_index_move(id, lowered)
+		return t.lower_owned_array_index_move(id, lowered, snapshotted_base_is_temporary)
 	}
 	// A later child (index / slice bound) that hoists a value `match`/`if` — directly or
 	// nested inside a compound child (`make_values(mut tr)[1 + (match n { ... })]`) — lifts
@@ -23334,7 +23344,16 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 			} else {
 				t.transform_element_index_base_expr(child_id)
 			}
-			if node.value == 'range' && node.children_count < 3 {
+			if last_value_branch > 0 && t.operand_needs_ordering_snapshot(child_id) {
+				// Keep the dedicated base/view lowering, then evaluate the base before
+				// the later index or bound's propagation prelude.
+				base_type := t.node_type(base)
+				snapshotted_base_is_temporary = !isnil(t.tc)
+					&& t.tc.ownership_index_read_moves_value(id)
+					&& !flat.source_type_shape(t.normalize_type_alias(base_type)).has(.pointer)
+					&& !t.expr_can_take_address(base)
+				t.snapshot_transformed_expr_for_reuse(base, base_type, 'index_base')
+			} else if node.value == 'range' && node.children_count < 3 {
 				base_type_source_id := t.node_type(base)
 
 				t.stable_transformed_expr_for_reuse(base, base_type_source_id, 'slice_base')
@@ -23379,13 +23398,13 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		if index_typ != 0 {
 			t.set_node_typ(int(id), index_typ)
 		}
-		return t.lower_owned_array_index_move(id, id)
+		return t.lower_owned_array_index_move(id, id, snapshotted_base_is_temporary)
 	}
 	if t.rewrite_children_in_place(id, new_children) {
 		if index_typ != 0 {
 			t.set_node_typ(int(id), index_typ)
 		}
-		return t.lower_owned_array_index_move(id, id)
+		return t.lower_owned_array_index_move(id, id, snapshotted_base_is_temporary)
 	}
 	start := t.a.children.len
 	for nc in new_children {
@@ -23400,7 +23419,7 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		value:          node.value
 		typ:            index_typ
 	})
-	return t.lower_owned_array_index_move(id, new_id)
+	return t.lower_owned_array_index_move(id, new_id, snapshotted_base_is_temporary)
 }
 
 // transform_element_index_base_expr transforms the base of an element index, `base[i]`.
@@ -23450,7 +23469,7 @@ fn (mut t Transformer) transform_index_base_expr(id flat.NodeId) flat.NodeId {
 
 // lower_owned_array_index_move materializes an indexed value that ownership analysis
 // consumed, then clears the source slot so the enclosing container cannot destroy it again.
-fn (mut t Transformer) lower_owned_array_index_move(source_id flat.NodeId, index_id flat.NodeId) flat.NodeId {
+fn (mut t Transformer) lower_owned_array_index_move(source_id flat.NodeId, index_id flat.NodeId, snapshotted_base_is_temporary bool) flat.NodeId {
 	if isnil(t.tc) || !t.tc.ownership_index_read_moves_value(source_id) || int(index_id) < 0 {
 		return index_id
 	}
@@ -23475,7 +23494,8 @@ fn (mut t Transformer) lower_owned_array_index_move(source_id flat.NodeId, index
 	if elem_type_source_id == 0 || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type_source_id)) {
 		return index_id
 	}
-	source_is_owned_temporary := !is_pointer && !t.expr_can_take_address(base_id)
+	source_is_owned_temporary := !is_pointer
+		&& (snapshotted_base_is_temporary || !t.expr_can_take_address(base_id))
 	stable_base := t.stable_transformed_expr_for_reuse(base_id, base_type, 'owned_index_array_source')
 	mut array_value := stable_base
 	if is_pointer {

@@ -643,12 +643,16 @@ fn (mut tr Tracer) text_second(_ Second) !string {
 	return "world"
 }
 
-// String-membership ordering: the side-effecting needle must run before the
-// hoisting match container. "lo" in "hello" is true; order [1,2] -> 512 (a
+fn contains_text(needle string, haystack string) bool {
+	return haystack.contains(needle)
+}
+
+// Substring-search ordering: the side-effecting needle must run before the
+// hoisting match container. "hello" contains "lo"; order [1,2] -> 512 (a
 // reversed order would be 521).
 fn select_value_string_membership_order(node Node) !int {
 	mut tr := Tracer{}
-	inside := tr.needle_str() in (match node {
+	inside := contains_text(tr.needle_str(), match node {
 		First { tr.text_first(node)! }
 		Second { tr.text_second(node)! }
 	})
@@ -659,16 +663,16 @@ fn wrap_str(s string) string {
 	return s
 }
 
-// String-membership ordering with a *nested* container: the match is wrapped inside a call
-// (`needle in wrap_str(match ...)`), which still hoists the match prelude. The side-effecting
-// needle must run before it. First -> "lo" in "hello" = true, order [1,2] -> 512 (a reversed
+// Substring-search ordering with a *nested* container: the match is wrapped inside a call
+// (`contains_text(needle, wrap_str(match ...))`), which still hoists the match prelude.
+// The needle must run before it. First -> substring found, order [1,2] -> 512 (a reversed
 // order would be 521).
 fn select_value_nested_string_membership_order(node Node) !int {
 	mut tr := Tracer{}
-	inside := tr.needle_str() in wrap_str(match node {
+	inside := contains_text(tr.needle_str(), wrap_str(match node {
 		First { tr.text_first(node)! }
 		Second { tr.text_second(node)! }
-	})
+	}))
 	return (if inside { 500 } else { 0 }) + tr.order[0] * 10 + tr.order[1]
 }
 
