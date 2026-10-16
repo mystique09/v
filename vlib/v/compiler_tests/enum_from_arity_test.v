@@ -7,7 +7,7 @@ const enum_from_arity_vlib_dir = os.dir(enum_from_arity_v3_dir)
 const enum_from_arity_v3_src = os.join_path(enum_from_arity_v3_dir, 'v.v')
 
 fn enum_from_arity_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_enum_from_arity_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_enum_from_arity_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	os.rm(v3_bin) or {}
 	build :=
 		os.exec([enum_from_arity_vexe, '-gc', 'none', '-path',
@@ -120,12 +120,12 @@ enum Color {
 	red
 }
 
-fn parse[T](x T) ?Color {
+fn parse[T](x T) !Color {
 	return Color.from(x)
 }
 
 fn main() {
-	_ := parse[Foo](Foo{})
+	_ := parse[Foo](Foo{}) or { return }
 }
 ',
 		'cannot use `Foo` as argument 1 to `Color.from`; expected string or integer')
@@ -174,7 +174,7 @@ fn main() {
 }
 ')
 	assert alias_out == 'blue'
-	generic_out := enum_from_arity_run_good(v3_bin, 'generic_string_enum_from', 'fn parse[T](s string) ?T {
+	generic_out := enum_from_arity_run_good(v3_bin, 'generic_string_enum_from', 'fn parse[T](s string) !T {
 	return T.from(s)
 }
 
@@ -194,7 +194,7 @@ fn main() {
 	blue
 }
 
-fn parse[T](x T) ?Color {
+fn parse[T](x T) !Color {
 	return Color.from(x)
 }
 
@@ -209,7 +209,7 @@ fn main() {
 	blue
 }
 
-fn parse[T](x int) ?T {
+fn parse[T](x int) !T {
 	return T.from(x)
 }
 
@@ -276,8 +276,8 @@ fn parse[T](value int) ?T {
 }
 
 fn main() {
-	println(int(Color.from(99) or { panic(err) }))
-	println(int(parse[Color](99) or { panic(err) }))
+	println(int(Color.from(99) or { panic("expected the custom enum value") }))
+	println(int(parse[Color](99) or { panic("expected the custom enum value") }))
 	println(int(Mode.zero()))
 	println(int(StaticSource.zero()))
 	println(int(ValueSource{label: "value"}.zero()))
