@@ -1,7 +1,25 @@
 module c
 
 import v.flat
+import v.pref
 import v.types
+
+fn test_ownership_box_free_uses_the_target_allocator() {
+	mut g := FlatGen.new()
+	for target_os in ['windows', 'linux', 'macos'] {
+		g.set_target(pref.target_from(target_os, 'amd64') or { panic(err) })
+		g.compile_defines = []string{}
+		g.detached_spawn_drop = false
+		expected := if target_os == 'windows' { 'v_free(box);' } else { 'free(box);' }
+		assert g.ownership_free_call('box') == expected
+		g.compile_defines = ['gcboehm']
+		assert g.ownership_free_call('box') == 'v_gc_free(box);'
+		g.detached_spawn_drop = true
+		assert g.ownership_free_call('box') == '__v_thread_free(box);'
+		g.compile_defines = ['prealloc']
+		assert g.ownership_free_call('box') == 'v_free(box);'
+	}
+}
 
 fn stmt_test_node(mut a flat.FlatAst, kind flat.NodeKind, value string, children []flat.NodeId) flat.NodeId {
 	start := a.children.len

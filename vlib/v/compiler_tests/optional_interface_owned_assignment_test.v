@@ -53,7 +53,13 @@ fn main() {
 	assert cleared.slot == none
 }
 ')!
-	result := os.exec([@VEXE, '-new-compiler', '-ownership', '-gc', 'none', '-cstrict', '-cc',
-		'clang', 'run', source])
-	assert result.exit_code == 0, result.output
+	mut compilers := ['clang']
+	$if windows {
+		compilers << 'tcc'
+	}
+	for compiler in compilers {
+		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-ownership',
+			'-gc', 'none', '-cstrict', '-cc', compiler, 'run', source])
+		assert result.exit_code == 0, '${compiler}: ${result.output}'
+	}
 }

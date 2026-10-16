@@ -1106,6 +1106,10 @@ fn (g &FlatGen) ownership_free_call(ptr string) string {
 	if 'gcboehm' in g.compile_defines {
 		return 'v_gc_free(${ptr});'
 	}
+	if g.target.os == 'windows' {
+		// Windows memdup uses V's aligned allocator, which requires v_free.
+		return 'v_free(${ptr});'
+	}
 	return 'free(${ptr});'
 }
 
