@@ -1652,10 +1652,13 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	if language.len > 0 {
 		args << ['-x', language]
 	}
+	// Native inputs are prepared serially in a private build directory. Reuse its
+	// uniqueness and number completed objects to keep Windows paths below MAX_PATH.
+	temporary_name := 'native_${stats.temporary_objects.len}'
 	if c_compiler_is_msvc(compiler) {
 		// `cl` cannot list a source's dependencies like `-M` does, so the object cannot
 		// be validated against its headers later. Build it for this compilation only.
-		msvc_obj := os.join_path(uncached_dir, '${os.file_name(obj_path).all_before_last('.')}_${tempname.unique_token()}.obj')
+		msvc_obj := os.join_path(uncached_dir, '${temporary_name}.obj')
 		args << ['-o', msvc_obj, '-c', source_file]
 		res := cmdexec.run(compiler, msvc_cl_object_args(args, target.os))
 		if res.exit_code != 0 {
@@ -1674,7 +1677,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	stats.dependency_files += dependencies.files.len
 	if dependencies.used_fallback {
 		stats.dependency_scan_fallbacks++
-		uncached_obj := os.join_path(uncached_dir, 'dependency_scan_fallback_${tempname.unique_token()}.o')
+		uncached_obj := os.join_path(uncached_dir, '${temporary_name}.o')
 		trace_c_object_cache('bypass', os.base(obj_path), 'dependency scan failed; using build-local object', dependencies.files.len)
 		args << ['-o', uncached_obj, '-c', source_file]
 		res := cmdexec.run(compiler, args)
@@ -1713,7 +1716,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	if post_key != cache_key {
 		stats.input_snapshot_races++
 		trace_c_object_cache('bypass', cache_key, 'inputs changed during compilation; using build-local object', dependencies.files.len)
-		uncached_obj := os.join_path(uncached_dir, 'input_snapshot_race_${tempname.unique_token()}.o')
+		uncached_obj := os.join_path(uncached_dir, '${temporary_name}.o')
 		os.mv(temp_obj, uncached_obj) or {
 			os.rm(temp_obj) or {}
 			return error('failed to stage build-local C object ${uncached_obj}: ${err}')
@@ -2233,6 +2236,7 @@ fn maybe_delegate_v3_to_vvmrc(input_file string, verbose bool) {
 	envs[v3_vvmrc_skip_env] = '1'
 	envs['VEXE'] = requested_exe
 	process.set_environment(envs)
+	clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
 	process.wait()
 	exit_code := if process.code >= 0 { process.code } else { 1 }
 	process.close()
@@ -16226,6 +16230,7 @@ pub fn run(args []string) {
 					}
 				}
 				$if windows {
+					clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 					exit(os.system_args([os.executable(), ...regeneration_args]))
 				}
 				os.execvp(os.executable(), regeneration_args) or {
@@ -16262,6 +16267,7 @@ pub fn run(args []string) {
 					}
 					retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
 					cleanup_c_build_dir(cc_dir)
+					clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 					retry_result := cmdexec.run(os.executable(), retry_args)
 					if retry_result.output.len > 0 {
 						print(retry_result.output)
@@ -16976,6 +16982,7 @@ fn v3_recover_from_cache_failure(output string, cc_dir string) bool {
 	$if windows {
 		// `_execvp` would exit this process with status 0 before the retried
 		// build finishes, so forward the retried build's status instead.
+		clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
 		exit(os.system_args([executable, ...restart_args]))
 	}
 	os.execvp(executable, restart_args) or {
@@ -17056,6 +17063,7 @@ fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_
 	flush_stdout()
 	flush_stderr()
 	$if windows {
+		clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
 		retry_result := cmdexec.run(os.executable(), retry_args)
 		if retry_result.output.len > 0 {
 			print(retry_result.output)
@@ -18225,6 +18233,9 @@ fn restart_v3_with_args(extra_args []string) {
 		// Windows has no exec either: `_execvp` would start the child and then
 		// exit this process with status 0, dropping the restarted build's
 		// result on the floor.
+		// The child launcher owns fallback reporting. The parent's at_exit
+		// handler must not replay a successful build or duplicate its errors.
+		clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
 		exit(os.system_args([executable, ...args]))
 	} $else {
 		os.execvp(executable, args) or {
@@ -22888,6 +22899,7 @@ fn rerun_as_one_shot_check_with(reason string, question string, extra_args []str
 		for name in ['V_DIAGNOSTICS_SERVER', 'V_DIAGNOSTICS_PREPARE'] {
 			os.unsetenv(name)
 		}
+		clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
 		exit(os.system_args([os.executable(), ...args]))
 	} $else {
 		mut envs := []string{}
