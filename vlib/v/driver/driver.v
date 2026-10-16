@@ -2518,6 +2518,7 @@ struct V3CCompilerFlagOptions {
 	c_compiler          string
 	subsystem           pref.Subsystem
 	windows_gui_app     bool
+	literal_output_only bool
 	macos_sdk_root      string
 	pic_flag            string
 	is_prod             bool
@@ -3698,7 +3699,13 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	if options.pic_flag.len > 0 {
 		before_inputs << options.pic_flag
 	}
-	before_inputs << v3_windows_executable_linker_flags(options.target_os, options.c_compiler, options.is_shared, options.is_o, options.subsystem, options.windows_gui_app)
+	windows_link_flags := v3_windows_executable_linker_flags(options.target_os, options.c_compiler, options.is_shared, options.is_o, options.subsystem, options.windows_gui_app)
+	// The literal-only generator emits main(void), without the wide Windows runtime.
+	before_inputs << if options.literal_output_only {
+		windows_link_flags.filter(it != '-municode')
+	} else {
+		windows_link_flags
+	}
 	if options.c_compiler == 'msvc' {
 		before_inputs << v3_msvc_link_flags(options.target_os, options.is_shared, options.is_o,
 			options.subsystem, options.windows_gui_app)
@@ -15232,6 +15239,7 @@ pub fn run(args []string) {
 			c_compiler:          effective_c_compiler
 			subsystem:           prefs.subsystem
 			windows_gui_app:     windows_gui_entry_point
+			literal_output_only: generated_literal_output_only
 			macos_sdk_root:      flag_plan_sdk_root
 			pic_flag:            pic_flag
 			is_prod:             is_prod
@@ -19080,8 +19088,9 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 	unique := tempname.unique_token()
 	// GCC records the input basename in otherwise-identical object files. Put the
 	// stable cache basename in a unique directory so recompiles remain byte-for-byte
-	// reproducible without sacrificing concurrent-writer isolation.
-	tmp_dir := '${entry.c_source}.tmp.${unique}'
+	// reproducible without sacrificing concurrent-writer isolation. Avoid repeating
+	// that basename in the directory, which can exceed Windows path limits.
+	tmp_dir := os.join_path(os.dir(entry.c_source), '.tmp.${unique}')
 	os.mkdir_all(tmp_dir)!
 	tmp_source := os.join_path(tmp_dir, os.file_name(entry.c_source))
 	defer {
@@ -19094,7 +19103,7 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 	os.write_file(tmp_source, c_source)!
 	mut flags := c_object_compile_flags(generated_c_flags)
 	flags = flags.filter(!c_flag_is_object_file(it))
-	tmp_object := '${entry.object}.tmp.${unique}'
+	tmp_object := os.join_path(tmp_dir, 'module.o')
 	mut args := compiler.args.clone()
 	if objective_c {
 		args << ['-x', 'objective-c']

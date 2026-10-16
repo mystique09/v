@@ -1628,6 +1628,33 @@ fn test_v3_cgen_metadata_preserves_windows_gui_entry_point() {
 	assert decoded.flags == ['-lgdi32']
 }
 
+fn test_windows_literal_output_builds_with_dumped_c_flags() ! {
+	$if !windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'literal_output_flags_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, "fn main() { println('literal-output-ok') }\n")!
+	for compiler in ['tcc', 'clang', 'gcc'] {
+		if compiler != 'tcc' {
+			_ = os.find_abs_path_of_executable(compiler) or { continue }
+		}
+		output := os.join_path(root, '${compiler}.exe')
+		flags_path := os.join_path(root, '${compiler}_flags.txt')
+		compile := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-no-retry-compilation',
+			'-nocache', '-cc', compiler, '-dump-c-flags', flags_path, '-o', output, source])
+		assert compile.exit_code == 0, '${compiler}: ${compile.output}'
+		flags := os.read_lines(flags_path)!
+		assert '-municode' !in flags, flags.str()
+		assert '-Wl,--stack=33554432' in flags, flags.str()
+		run := cmdexec.run(output, [])
+		assert run.exit_code == 0, run.output
+		assert run.output == 'literal-output-ok\n', run.output
+	}
+}
+
 fn test_v3_fastc_rejects_windows_gui_subsystem() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_windows_subsystem_${os.getpid()}')
 	os.rmdir_all(root) or {}

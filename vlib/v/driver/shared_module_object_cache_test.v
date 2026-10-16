@@ -151,6 +151,32 @@ fn test_shared_module_objects_ignore_unused_build_hash_literals() ! {
 	assert_shared_object_value(cc, root, updated.object, int(`o`))!
 }
 
+fn test_module_object_staging_handles_long_cache_paths() ! {
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	root := os.join_path(os.vtmp_dir(), 'module_object_paths_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	// Cache keys fit within MAX_PATH, but repeating them in staging paths does not.
+	padding := if root.len < 165 { 165 - root.len } else { 1 }
+	configuration := os.join_path(root, 'p'.repeat(padding))
+	os.mkdir(configuration)!
+	basename := 'builtin_6bca4edce10e9f86_8c94c8bdf42140d6'
+	entry := modulecache.Entry{
+		object:   os.join_path(configuration, basename + '.o')
+		c_source: os.join_path(configuration, basename + '.c')
+	}
+	assert entry.c_source.len < 260
+	compiler := V3CachedObjectCompiler{ path: cc }
+	state := V3ModuleCacheState{ silent: true }
+	source := 'int shared_value(void) { return 42; }\n'
+	assert compile_v3_cached_object(compiler, entry, source, '', '', '', '', [], false, {}, &state, 'sample')!
+	assert os.is_file(entry.c_source)
+	assert_shared_object_value(cc, root, entry.object, 42)!
+	object := os.read_file(entry.object)!
+	assert !compile_v3_cached_object(compiler, entry, source, '', '', '', '', [], false, {}, &state, 'sample')!
+	assert os.read_file(entry.object)! == object
+}
+
 fn assert_shared_object_value(cc string, root string, object string, expected int) ! {
 	source := os.join_path(root, 'main.c')
 	os.write_file(source, 'int shared_value(void); int main(void) { return shared_value() == ${expected} ? 0 : 1; }\n')!
