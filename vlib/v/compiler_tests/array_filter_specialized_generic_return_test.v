@@ -49,7 +49,8 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin_path := '${v3_bin}.bin'
+	exe_suffix := $if windows { '.exe' } $else { '' }
+	bin_path := '${v3_bin}.bin${exe_suffix}'
 	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_path])

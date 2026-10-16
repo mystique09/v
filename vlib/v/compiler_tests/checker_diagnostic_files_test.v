@@ -284,13 +284,18 @@ fn main() {
 '
 }
 
+fn assert_invalid_ierror_return(errors []types.TypeError) {
+	assert errors.len == 1, errors.str()
+	assert errors[0].kind == .return_mismatch, errors.str()
+	assert errors[0].msg == 'cannot use `bad.NotError` as type `!int` in return argument', errors.str()
+	assert errors[0].file.replace('\\', '/').ends_with('/bad/bad.v'), errors.str()
+}
+
 fn test_invalid_ierror_result_return_respects_diagnostic_files() {
 	bad_errors := check_diagnostic_project('ierror_return_bad', invalid_ierror_return_project, [
 		'bad/bad.v',
 	])
-	assert bad_errors.len == 1, bad_errors.str()
-	assert bad_errors[0].msg.contains('bad.NotError')
-	assert bad_errors[0].msg.contains('`!int`')
+	assert_invalid_ierror_return(bad_errors)
 
 	main_errors := check_diagnostic_project('ierror_return_filtered',
 		invalid_ierror_return_project, ['main.v'])
@@ -300,46 +305,31 @@ fn test_invalid_ierror_result_return_respects_diagnostic_files() {
 fn test_selected_file_calling_invalid_ierror_result_return_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_return_called_from_main',
 		called_invalid_ierror_return_project, ['main.v'])
-	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
-	assert main_errors[0].msg.contains('bad.NotError')
-	assert main_errors[0].msg.contains('`!int`')
+	assert_invalid_ierror_return(main_errors)
 }
 
 fn test_selected_file_calling_transitive_invalid_ierror_result_return_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_return_transitive_called_from_main',
 		called_transitive_invalid_ierror_return_project, ['main.v'])
-	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
-	assert main_errors[0].msg.contains('bad.NotError')
-	assert main_errors[0].msg.contains('`!int`')
+	assert_invalid_ierror_return(main_errors)
 }
 
 fn test_selected_file_calling_invalid_ierror_local_method_return_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_local_method_return_called_from_main',
 		called_invalid_ierror_local_method_return_project, ['main.v'])
-	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
-	assert main_errors[0].msg.contains('bad.NotError')
-	assert main_errors[0].msg.contains('`!int`')
+	assert_invalid_ierror_return(main_errors)
 }
 
 fn test_selected_file_multi_return_local_receiver_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_multi_return_method_called_from_main',
 		called_invalid_ierror_multi_return_local_method_project, ['main.v'])
-	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
-	assert main_errors[0].msg.contains('bad.NotError')
-	assert main_errors[0].msg.contains('`!int`')
+	assert_invalid_ierror_return(main_errors)
 }
 
 fn test_selected_file_for_in_local_receiver_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_for_in_method_called_from_main',
 		called_invalid_ierror_for_in_local_method_project, ['main.v'])
-	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
-	assert main_errors[0].msg.contains('bad.NotError')
-	assert main_errors[0].msg.contains('`!int`')
+	assert_invalid_ierror_return(main_errors)
 }
 
 fn test_selected_file_local_receiver_different_method_receiver_stays_filtered() {
@@ -354,7 +344,7 @@ fn test_selected_file_local_receiver_uses_distinct_import_alias() {
 	assert main_errors.len == 0, main_errors.str()
 }
 
-fn test_local_shadowing_in_child_scope_and_fn_literal_is_allowed() {
+fn test_local_shadowing_in_child_scope_is_rejected() {
 	errors := check_diagnostic_project('ordinary_local_child_shadow', {
 		'main.v': 'module main
 
@@ -364,6 +354,21 @@ fn main() {
 		timers := 2
 		_ = timers
 	}
+	_ = timers
+}
+'
+	}, ['main.v'])
+	assert errors.len == 1, errors.str()
+	assert errors[0].kind == .assignment_mismatch, errors.str()
+	assert errors[0].msg == 'redefinition of `timers`', errors.str()
+}
+
+fn test_uncaptured_local_in_fn_literal_has_its_own_scope() {
+	errors := check_diagnostic_project('ordinary_local_fn_literal_scope', {
+		'main.v': 'module main
+
+fn main() {
+	timers := 1
 	cb := fn () {
 		timers := 3
 		_ = timers
@@ -379,10 +384,7 @@ fn main() {
 fn test_selected_file_calling_invalid_ierror_method_return_reports_dependency_error() {
 	main_errors := check_diagnostic_project('ierror_method_return_called_from_main',
 		called_invalid_ierror_method_return_project, ['main.v'])
-	assert main_errors.len == 1, main_errors.str()
-	assert main_errors[0].msg.contains('cannot return')
-	assert main_errors[0].msg.contains('bad.NotError')
-	assert main_errors[0].msg.contains('`!int`')
+	assert_invalid_ierror_return(main_errors)
 }
 
 fn test_wait_on_non_thread_array_reports_error() {

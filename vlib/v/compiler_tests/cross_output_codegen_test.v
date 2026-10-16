@@ -2,6 +2,13 @@ import os
 import v.cmdexec
 
 const vexe = @VEXE
+const atomic_source = 'module main
+import sync.stdatomic
+fn main() {
+	mut value := i64(1)
+	println(stdatomic.add_i64(&value, 1))
+}
+'
 
 fn cross_generate(name string, source string) string {
 	return cross_generate_with('-os cross', name, source)
@@ -282,8 +289,8 @@ fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
 	// definitions have to sit behind the negation of that same guard. Without it
 	// the macro expanded over the definition and tcc rejected `vc/v_win.c` with
 	// `redefinition of 'ManualInterlockedExchangeAdd8'`.
-	for flags in ['-cross -os windows -cc msvc', '-os cross', '-os windows -cc gcc'] {
-		c_code := cross_generate_with(flags, 'atomics', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+	for flags in ['-cross -os windows -cc msvc', '-os cross', '-cross -os windows -cc gcc'] {
+		c_code := cross_generate_with(flags, 'atomics', atomic_source)
 		guard := '#if !(defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__))))'
 		definition := 'static inline byte atomic_fetch_add_byte('
 		at := c_code.index(definition) or {
@@ -301,7 +308,8 @@ fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
 }
 
 fn test_windows_msvc_output_balances_atomic_header_guards() {
-	c_code := cross_generate_with('-os windows -cc msvc', 'windows_msvc_atomics', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+	c_code := cross_generate_with('-os windows -cc msvc', 'windows_msvc_atomics', atomic_source)
+	assert c_code.contains('/thirdparty/stdatomic/win/atomic.h"')
 	assert c_code.contains('static inline byte atomic_fetch_add_byte(')
 	mut depth := 0
 	for line in c_code.split_into_lines() {
@@ -342,7 +350,7 @@ fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
 	}
 }
 
-fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavailable() {
+fn test_cross_output_uses_getentropy_instead_of_the_linux_helper_where_unavailable() {
 	// The portable snapshot is generated on Linux, so it bakes in rand_linux.c.v.
 	// It is then compiled on macOS or OpenBSD to bootstrap v1, where SYS_getrandom
 	// does not exist. Keep both implementations in the snapshot and let the target
@@ -353,11 +361,11 @@ fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavaila
 		assert false, 'the Apple entropy implementation is missing from the snapshot: ${body}'
 		return
 	}
-	syscall_at := body.index('syscall(') or {
+	linux_at := body.index('v_crypto_getrandom(') or {
 		assert false, 'the Linux entropy implementation is missing from the snapshot: ${body}'
 		return
 	}
-	assert getentropy_at < syscall_at, 'the Apple entropy branch should precede the Linux fallback: ${body}'
+	assert getentropy_at < linux_at, 'the Apple entropy branch should precede the Linux fallback: ${body}'
 	before_getentropy := body[..getentropy_at]
 	guard_at := before_getentropy.last_index('#if ') or {
 		assert false, 'getentropy is not behind an Apple preprocessor guard: ${body}'
@@ -366,7 +374,13 @@ fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavaila
 	condition := before_getentropy[guard_at..].all_before('\n')
 	assert condition.contains('__APPLE__'), 'getentropy is guarded by `${condition}`, which does not select Apple'
 	assert condition.contains('__OpenBSD__'), 'getentropy is guarded by `${condition}`, which does not select OpenBSD'
-	assert body[getentropy_at..syscall_at].contains('#else'), 'the Linux syscall is not in the fallback branch: ${body}'
+	assert body[getentropy_at..linux_at].contains('#else'), 'the Linux helper is not in the fallback branch: ${body}'
+	helper_signature := 'static inline long v_crypto_getrandom(void* buf, size_t n) {'
+	helper := function_body(c_code, helper_signature)
+	assert helper.contains('getrandom(buf, n, 0)'), helper
+	assert helper.contains('#else\n\treturn syscall(SYS_getrandom, buf, n, 0);'), helper
+	helper_at := c_code.index(helper_signature) or { panic('missing Linux entropy helper') }
+	assert enclosing_guards_at(c_code, helper_at).contains('#if defined(__linux__)')
 }
 
 fn test_cross_output_keeps_the_linux_calls_of_the_diagnostics_server_behind_linux_guards() {

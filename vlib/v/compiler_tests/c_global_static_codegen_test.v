@@ -1,4 +1,5 @@
 import os
+import v.cmdexec
 import v.flat
 import v.gen.c as cgen
 import v.markused
@@ -128,10 +129,16 @@ fn next_value() int {
 }
 
 fn main() {
-	_ := next_value()
+	assert next_value() == 1
+	assert next_value() == 2
 }
 ')
-	assert c_code.contains('static i64 x = 0;')
+	assert c_code.contains('static i64 x = '), c_code
+	// Translated integer initializers can carry a C-width cast. Check their
+	// initial value and persistent storage by executing the same fixture.
+	source := os.join_path(os.temp_dir(), 'v3_static_local_decl.v')
+	result := cmdexec.run(@VEXE, ['-new-compiler', '-no-retry-compilation', 'run', source])
+	assert result.exit_code == 0, result.output
 }
 
 // test_aggregate_globals_are_brace_zero_initialized validates this v3 regression case.

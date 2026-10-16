@@ -92,7 +92,7 @@ fn test_c_extern_fn_callback_arg_is_not_cast() {
 	src := extern_cb_write_source()
 	c_path := src + '.c'
 	header := src + '.h'
-	exe := src + '.out'
+	exe := src + '.out' + $if windows { '.exe' } $else { '' }
 	defer {
 		os.rm(v3_bin) or {}
 		os.rm(src) or {}

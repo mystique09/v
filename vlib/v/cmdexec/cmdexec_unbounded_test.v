@@ -23,7 +23,11 @@ const unbounded_group_env = 'VTEST_CMDEXEC_UNBOUNDED_GROUP'
 fn unbounded_writer_watchdog() {
 	time.sleep(10 * time.second)
 	// Normal exit may wait for a stdio lock held by the blocked writer.
-	C._Exit(91)
+	$if windows {
+		C._exit(91)
+	} $else {
+		C._Exit(91)
+	}
 }
 
 fn testsuite_begin() {

@@ -192,6 +192,7 @@ fn main() {
 fn test_mut_parameter_pointer_return_stays_pointer() {
 	c_code := gen_c_for_c_global_source('mut_parameter_pointer_return', 'module main
 
+@[heap]
 struct Builder {
 mut:
 	value int

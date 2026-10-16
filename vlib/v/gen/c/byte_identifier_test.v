@@ -9,8 +9,13 @@ fn test_byte_global_object_and_callback_compile_and_run() {
 	defer {
 		os.rmdir_all(test_dir) or {}
 	}
-	// V's own Windows clang command passes -municode, which the generated `wmain` entry needs.
-	municode := $if windows { ['-municode'] } $else { []string{} }
+	// Direct linking needs the Windows entry flag and builtin CRT helper that V
+	// normally adds through its native build inputs.
+	platform_inputs := $if windows {
+		['-municode', os.join_path(@VEXEROOT, 'vlib/builtin/core_windows.c')]
+	} $else {
+		[]string{}
+	}
 	for fixture, source in {
 		'scalar':   'module main
 __global byte int
@@ -40,8 +45,8 @@ fn main() { byte = increment; println(byte(8)) }
 		generated := cmdexec.run(@VEXE, ['-new-compiler', '-d', 'no_segfault_handler', '-gc', 'none',
 			'-enable-globals', '-cc', 'clang', '-o', c_file, v_file])
 		assert generated.exit_code == 0, generated.output
-		compiled := cmdexec.run('clang', ['-std=gnu11', ...municode, '-o', bin_file, c_file, '-lm',
-			'-lpthread'])
+		compiled := cmdexec.run('clang', ['-std=gnu11', ...platform_inputs, '-o', bin_file, c_file,
+			'-lm', '-lpthread'])
 		assert compiled.exit_code == 0, compiled.output
 		executed := cmdexec.run(bin_file, [])
 		assert executed.exit_code == 0, executed.output

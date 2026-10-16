@@ -37,7 +37,7 @@ fn check_print_sources(name string, files map[string]string) []types.TypeError {
 
 // build_checker_print_v3_bin builds checker print v3 bin data for v3 tests.
 fn build_checker_print_v3_bin(name string) string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_checker_print_${name}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_checker_print_compiler_${name}_${os.getpid()}${exe_suffix()}')
 	build := os.exec([checker_print_vexe, '-gc', 'none', '-o', v3_bin, '${checker_print_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
@@ -114,8 +114,13 @@ pub fn println(s string) {}
 // test_eprint_bool_compile_uses_stringification validates this v3 regression case.
 fn test_eprint_bool_compile_uses_stringification() {
 	v3_bin := build_checker_print_v3_bin('eprint_bool')
-	src := os.join_path(os.temp_dir(), 'v3_checker_print_eprint_bool.v')
-	bin := os.join_path(os.temp_dir(), 'v3_checker_print_eprint_bool')
+	src := os.join_path(os.temp_dir(), 'v3_checker_print_eprint_bool_${os.getpid()}.v')
+	bin := os.join_path(os.temp_dir(), 'v3_checker_print_eprint_bool_${os.getpid()}${exe_suffix()}')
+	defer {
+		os.rm(v3_bin) or {}
+		os.rm(src) or {}
+		os.rm(bin) or {}
+	}
 	os.write_file(src, '
 fn main() {
 	eprint(true)
@@ -123,4 +128,11 @@ fn main() {
 ') or { panic(err) }
 	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
+	run := os.exec([bin])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'true'
+}
+
+fn exe_suffix() string {
+	return $if windows { '.exe' } $else { '' }
 }

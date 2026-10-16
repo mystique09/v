@@ -16,6 +16,7 @@ ierror_pointer_casts.md
 inline_code.md
 module_cache_native_inputs.md
 msvc_targets.md
+multiple_return_guards.md
 noalloc.md
 ownership.md
 packaging_v_for_distributions.md

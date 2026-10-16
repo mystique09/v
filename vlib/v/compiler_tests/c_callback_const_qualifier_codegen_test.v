@@ -1,5 +1,6 @@
 import os
 import strings
+import v.cmdexec
 
 const const_cb_vexe = @VEXE
 const const_cb_tests_dir = os.dir(@FILE)
@@ -353,7 +354,9 @@ fn main() {
 ')
 	path := const_cb_write_project(src.str())
 	out := os.join_path(os.temp_dir(), 'v3_const_callback_parallel_out_${os.getpid()}')
-	compile := os.exec(['env', 'VJOBS=2', v3_bin, path, '-b', 'c', '-o', '${out}'])
+	compile := cmdexec.run_in_merged_with_env(v3_bin, [path, '-b', 'c', '-o', out], '', {
+		'VJOBS': '2'
+	})
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([out])
 	assert run.exit_code == 0, run.output
