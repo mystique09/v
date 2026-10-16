@@ -7082,13 +7082,13 @@ fn (mut tc TypeChecker) record_deprecation(id flat.NodeId, kind string, deprecat
 		tc.record_warning_at(.unknown_fn, '${kind} `${deprecation.name}` has been deprecated${custom}', id, pos)
 		return
 	}
-	today := time.now().strftime('%Y-%m-%d')
+	today := time.now().ymmdd()
 	if deprecation.after <= today {
 		tc.record_error_at(.unknown_fn, '${kind} `${deprecation.name}` has been deprecated since ${deprecation.after}${custom}', id, pos)
 		return
 	}
 	error_after := time.parse_iso8601(deprecation.after) or { return }
-	tc.record_notice_at(.unknown_fn, '${kind} `${deprecation.name}` will be deprecated after ${deprecation.after}, and will become an error after ${error_after.add_days(180).strftime('%Y-%m-%d')}${custom}', id, pos)
+	tc.record_notice_at(.unknown_fn, '${kind} `${deprecation.name}` will be deprecated after ${deprecation.after}, and will become an error after ${error_after.add_days(180).ymmdd()}${custom}', id, pos)
 }
 
 fn (tc &TypeChecker) deprecated_call_diagnostic_pos(node flat.Node, is_method bool) token.Pos {
