@@ -335,6 +335,20 @@ pub mut:
 	pos  usize
 }
 
+@[typedef]
+struct C.ZSTD_inBuffer {
+	src  voidptr
+	size usize
+	pos  usize
+}
+
+@[typedef]
+struct C.ZSTD_outBuffer {
+	dst  voidptr
+	size usize
+	pos  usize
+}
+
 fn C.ZSTD_createCStream() voidptr
 fn C.ZSTD_freeCStream(voidptr) usize
 
@@ -354,19 +368,19 @@ pub enum EndDirective {
 	end      = 2
 }
 
-fn C.ZSTD_compressStream2(voidptr, &OutBuffer, &InBuffer, EndDirective) usize
+fn C.ZSTD_compressStream2(voidptr, &C.ZSTD_outBuffer, &C.ZSTD_inBuffer, EndDirective) usize
 fn C.ZSTD_CStreamInSize() usize
 fn C.ZSTD_CStreamOutSize() usize
 fn C.ZSTD_initCStream(voidptr, i32) usize
-fn C.ZSTD_compressStream(voidptr, &OutBuffer, &InBuffer) usize
-fn C.ZSTD_flushStream(voidptr, &OutBuffer) usize
-fn C.ZSTD_endStream(voidptr, &OutBuffer) usize
+fn C.ZSTD_compressStream(voidptr, &C.ZSTD_outBuffer, &C.ZSTD_inBuffer) usize
+fn C.ZSTD_flushStream(voidptr, &C.ZSTD_outBuffer) usize
+fn C.ZSTD_endStream(voidptr, &C.ZSTD_outBuffer) usize
 
 // streaming decompression
 fn C.ZSTD_createDStream() voidptr
 fn C.ZSTD_freeDStream(voidptr) usize
 fn C.ZSTD_initDStream(voidptr) usize
-fn C.ZSTD_decompressStream(voidptr, &OutBuffer, &InBuffer) usize
+fn C.ZSTD_decompressStream(voidptr, &C.ZSTD_outBuffer, &C.ZSTD_inBuffer) usize
 fn C.ZSTD_DStreamInSize() usize
 fn C.ZSTD_DStreamOutSize() usize
 
@@ -497,7 +511,13 @@ pub fn (mut c CCtx) set(c_param CParameter, val int) ! {
 // 	.zstd_e_flush => flush data
 // 	.zstd_e_end => it is the last frame
 pub fn (mut c CCtx) compress_stream2(output &OutBuffer, input &InBuffer, mode EndDirective) !usize {
-	res := C.ZSTD_compressStream2(c.ctx, output, input, mode)
+	c_output := C.ZSTD_outBuffer{output.dst, output.size, output.pos}
+	c_input := C.ZSTD_inBuffer{input.src, input.size, input.pos}
+	res := C.ZSTD_compressStream2(c.ctx, &c_output, &c_input, mode)
+	mut out := unsafe { output }
+	mut src := unsafe { input }
+	out.pos = c_output.pos
+	src.pos = c_input.pos
 	check_error(res)!
 	return res
 }
@@ -536,7 +556,13 @@ pub fn (mut d DCtx) set(d_param DParameter, val int) ! {
 // decompress_stream do stream decompress on `input`, and store decompressed data in `output`.
 // return remaining bytes in `input` stream
 pub fn (mut d DCtx) decompress_stream(output &OutBuffer, input &InBuffer) !usize {
-	res := C.ZSTD_decompressStream(d.ctx, output, input)
+	c_output := C.ZSTD_outBuffer{output.dst, output.size, output.pos}
+	c_input := C.ZSTD_inBuffer{input.src, input.size, input.pos}
+	res := C.ZSTD_decompressStream(d.ctx, &c_output, &c_input)
+	mut out := unsafe { output }
+	mut src := unsafe { input }
+	out.pos = c_output.pos
+	src.pos = c_input.pos
 	check_error(res)!
 	return res
 }
