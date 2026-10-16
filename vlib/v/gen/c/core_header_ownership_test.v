@@ -11,7 +11,8 @@ fn test_core_header_ownership_preserves_application_and_thirdparty_headers() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.compiler_vroot = '/vroot'
-	g.set_target(pref.host_target())
+	// These ownership cases require a supported POSIX ABI regardless of the host.
+	g.set_target(pref.target_from('linux', 'amd64') or { panic(err) })
 	assert g.core_native_header_is_redeclared('/vroot/vlib/time/timerfd.c.v', '<sys/timerfd.h>')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/os/mmap_nix.c.v', '<sys/mman.h>')
 	assert g.core_native_header_is_redeclared('/vroot/vlib/v/driver/replace_file_windows.c.v', '<windows.h>')
