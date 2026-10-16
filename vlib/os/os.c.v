@@ -351,18 +351,30 @@ pub fn cp(src string, dst string, config CopyParams) ! {
 // vfopen returns an opened C file, given its path and open mode.
 // Note: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
 // If you write pure V code, os.create or os.open are more convenient.
+@[manualfree]
 pub fn vfopen(path string, mode string) !&C.FILE {
 	if path == '' {
 		return error('vfopen called with ""')
 	}
 	mut fp := &C.FILE(unsafe { nil })
+	mut code := 0
 	$if windows {
-		fp = C._wfopen(path.to_wide(), mode.to_wide())
+		wide_path := path.to_wide()
+		wide_mode := mode.to_wide()
+		defer {
+			unsafe {
+				free(wide_path)
+				free(wide_mode)
+			}
+		}
+		fp = C._wfopen(wide_path, wide_mode)
+		code = C.errno
 	} $else {
 		fp = C.fopen(&char(path.str), &char(mode.str))
+		code = C.errno
 	}
 	if isnil(voidptr(fp)) {
-		return error_posix(msg: 'failed to open file "${path}"')
+		return error_posix(msg: 'failed to open file "${path}"', code: code)
 	}
 	return fp
 }
@@ -1238,22 +1250,34 @@ pub fn chown(path string, owner int, group int) ! {
 
 // open_append tries to open a file from a given path.
 // If successful, it and returns a `File` for appending.
+@[manualfree]
 pub fn open_append(path string) !File {
 	mut file := File{}
+	mut code := 0
 	$if windows {
-		wpath := path.replace('/', '\\').to_wide()
-		mode := 'ab'
-		file = File{
-			cfile: C._wfopen(wpath, mode.to_wide())
+		normalized_path := path.replace('/', '\\')
+		wide_path := normalized_path.to_wide()
+		wide_mode := 'ab'.to_wide()
+		defer {
+			unsafe {
+				free(wide_path)
+				free(wide_mode)
+				normalized_path.free()
+			}
 		}
+		file = File{
+			cfile: C._wfopen(wide_path, wide_mode)
+		}
+		code = C.errno
 	} $else {
 		cpath := path.str
 		file = File{
 			cfile: C.fopen(&char(cpath), c'ab')
 		}
+		code = C.errno
 	}
 	if isnil(file.cfile) {
-		return error_posix(msg: 'failed to create(append) file "${path}"')
+		return error_posix(msg: 'failed to create(append) file "${path}"', code: code)
 	}
 	file.is_opened = true
 	return file

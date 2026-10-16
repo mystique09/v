@@ -3,7 +3,6 @@
 @[has_globals]
 module debug
 
-import v.flat
 import os
 import readline
 import strings
@@ -47,7 +46,7 @@ mut:
 // DebugContextVar holds the scope variable information
 pub struct DebugContextVar {
 	name  string // var name
-	typ   u32    // its type name
+	typ   string // its runtime type name, independent of the compiler's intern table
 	value string // its str value
 }
 
@@ -56,7 +55,7 @@ pub struct DebugContextInfo {
 	is_anon           bool                       // cur fn is anon?
 	is_generic        bool                       // cur fn is a generic?
 	is_method         bool                       // cur fn is a bool?
-	receiver_typ_name u32                        // cur receiver type name (method only)
+	receiver_typ_name string                     // cur receiver type name (method only)
 	line              int                        // cur line number
 	file              string                     // cur file name
 	mod               string                     // cur module name
@@ -290,14 +289,14 @@ pub fn (mut d Debugger) interact(info DebugContextInfo) ! {
 	}
 }
 
-// typ_text resolves the indexed source type spelling.
+// typ_text returns the type spelling embedded in the debugged program.
 @[inline]
 pub fn (value &DebugContextVar) typ_text() string {
-	return flat.source_type_name(value.typ)
+	return value.typ
 }
 
-// receiver_typ_name_text resolves the indexed source type spelling.
+// receiver_typ_name_text returns the receiver spelling embedded in the debugged program.
 @[inline]
 pub fn (value &DebugContextInfo) receiver_typ_name_text() string {
-	return flat.source_type_name(value.receiver_typ_name)
+	return value.receiver_typ_name
 }
