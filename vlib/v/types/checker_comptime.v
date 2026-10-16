@@ -19670,6 +19670,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		}
 		tc.remember_expr_type(lhs_id, lhs_type)
 		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
+		tc.check_c_callback_field_assignment(lhs_id, rhs_id, expected_type)
 		source_rhs_type := tc.resolve_type(rhs_id)
 		tc.annotate_expected_expr(rhs_id, expected_type)
 		$if ownership ? {
@@ -20039,6 +20040,7 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 		}
 		tc.remember_expr_type(lhs_id, lhs_type)
 		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
+		tc.check_c_callback_field_assignment(lhs_id, rhs_id, expected_type)
 		source_rhs_type := tc.resolve_type(rhs_id)
 		tc.annotate_expected_expr(rhs_id, expected_type)
 		tc.check_node_with_expected_context(rhs_id, expected_type)

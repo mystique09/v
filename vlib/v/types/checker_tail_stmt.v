@@ -4439,6 +4439,14 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			} else if i < fields.len {
 				expected = fields[i].typ
 			}
+			field_name := if field.value.len > 0 {
+				field.value
+			} else if i < fields.len {
+				fields[i].name
+			} else {
+				''
+			}
+			tc.check_c_callback_field_value(value_id, '${init_name}.${field_name}', expected)
 			value_node := tc.a.node(value_id)
 			if unalias_type(expected) is Array && value_node.kind == .map_init {
 				tc.record_error_at(.assignment_mismatch, 'cannot use `{}` for array field `${field.value}`; use `[]` instead',

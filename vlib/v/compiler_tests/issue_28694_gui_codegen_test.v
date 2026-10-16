@@ -34,7 +34,8 @@ fn run_issue_28694_probe(name string, source string, files map[string]string) {
 		'probe'
 	})
 	os.write_file(source_path, source) or { panic(err) }
-	build := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', output_path, source_path])
+	build := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-o', output_path,
+		source_path])
 	assert build.exit_code == 0, '${name}: ${build.output}'
 	run := os.exec([output_path])
 	assert run.exit_code == 0, '${name}: ${run.output}'
@@ -91,9 +92,9 @@ fn test_issue_28694_forwarded_c_callbacks() {
 
 @[typedef]
 struct C.GuiCallbacks {
-	on_marked_text fn (&char, int, voidptr)
+	on_marked_text fn (&char, i32, voidptr)
 	on_insert_text fn (&char, voidptr)
-	on_clause      fn (int, int, int, voidptr)
+	on_clause      fn (i32, i32, i32, voidptr)
 }
 
 fn C.gui_invoke_callbacks(callbacks &C.GuiCallbacks, user_data voidptr)
@@ -108,7 +109,7 @@ mut:
 	clause_style  int
 }
 
-fn marked_text(text &char, selection int, data voidptr) {
+fn marked_text(text &char, selection i32, data voidptr) {
 	mut state := unsafe { &CallbackState(data) }
 	state.marked_byte = unsafe { u8(text[0]) }
 	state.selection = selection
@@ -119,16 +120,16 @@ fn insert_text(text &char, data voidptr) {
 	state.inserted_byte = unsafe { u8(text[0]) }
 }
 
-fn clause(start int, end int, style int, data voidptr) {
+fn clause(start i32, end i32, style i32, data voidptr) {
 	mut state := unsafe { &CallbackState(data) }
 	state.clause_start = start
 	state.clause_end = end
 	state.clause_style = style
 }
 
-fn make_callbacks(on_marked_text fn (&char, int, voidptr),
+fn make_callbacks(on_marked_text fn (&char, i32, voidptr),
 	on_insert_text fn (&char, voidptr),
-	on_clause fn (int, int, int, voidptr)) C.GuiCallbacks {
+	on_clause fn (i32, i32, i32, voidptr)) C.GuiCallbacks {
 	return C.GuiCallbacks{
 		on_marked_text: on_marked_text
 		on_insert_text: on_insert_text
@@ -164,6 +165,60 @@ static void gui_invoke_callbacks(const GuiCallbacks *callbacks, void *user_data)
 }
 
 #endif
+'
+	})
+}
+
+fn test_issue_28694_rejects_forwarded_platform_int_c_callback_fields() {
+	root := os.join_path(os.temp_dir(), 'v_issue_28694_callback_diagnostics_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	for name, body in {
+		'init':   'return C.Callback{on_value: on_value}'
+		'assign': 'mut result := C.Callback{on_value: named}\nresult.on_value = on_value\nreturn result'
+	} {
+		source := 'struct C.Callback {\nmut:\n\ton_value fn (int) int\n}\nfn named(value int) int { return value }\nfn forward(on_value fn (int) int) C.Callback {\n${body}\n}\nfn main() { _ := forward(named) }\n'
+		path := os.join_path(root, '${name}.c.v')
+		os.write_file(path, source) or { panic(err) }
+		for mode in ['check', 'build'] {
+			mut args := [@VEXE, '-new-compiler', '-no-retry-compilation']
+			if mode == 'check' {
+				args << '-check'
+			}
+			args << ['-o', os.join_path(root, '${name}.exe'), path]
+			check := os.exec(args)
+			assert check.exit_code != 0, '${name} ${mode}: ${check.output}'
+			assert check.output.contains('cannot assign a forwarded function value with an `int` parameter/return to C callback field `C.Callback.on_value`'), check.output
+			assert check.output.contains('declare the callback with `i32`'), check.output
+		}
+	}
+}
+
+fn test_issue_28694_c_callback_fields_keep_named_literal_and_c_field_values() {
+	run_issue_28694_probe('callback_field_values', '#include "@VMODROOT/callbacks.h"
+@[typedef]
+struct C.SimpleCallbacks {
+mut:
+	on_value fn (int) int
+}
+fn C.gui_apply(callbacks &C.SimpleCallbacks, value int) int
+fn named(value int) int { return value - 1 }
+fn main() {
+	original := C.SimpleCallbacks{on_value: named}
+	assert C.gui_apply(&original, -7) == -8
+	copied := C.SimpleCallbacks{on_value: original.on_value}
+	assert C.gui_apply(&copied, -7) == -8
+	mut assigned := C.SimpleCallbacks{on_value: named}
+	assigned.on_value = original.on_value
+	assert C.gui_apply(&assigned, -7) == -8
+	literal := C.SimpleCallbacks{on_value: fn (value int) int { return value - 2 }}
+	assert C.gui_apply(&literal, -7) == -9
+}
+', {
+		'callbacks.h': 'typedef struct SimpleCallbacks { int (*on_value)(int); } SimpleCallbacks;
+static int gui_apply(const SimpleCallbacks *callbacks, int value) {
+    return callbacks->on_value(value);
+}
 '
 	})
 }

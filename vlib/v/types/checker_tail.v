@@ -15109,6 +15109,44 @@ fn (tc &TypeChecker) direct_fn_literal_expr(id flat.NodeId) bool {
 	return false
 }
 
+fn (mut tc TypeChecker) c_callback_field_owner(id flat.NodeId) ?string {
+	node := tc.a.node(tc.unwrap_paren_expr_id(id))
+	if node.kind != .selector || node.children_count == 0 {
+		return none
+	}
+	owner := struct_type_from_type(unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(node,
+		0)))) or { return none }
+	if !owner.name().starts_with('C.') {
+		return none
+	}
+	return '${owner.name()}.${node.value}'
+}
+
+fn (mut tc TypeChecker) check_c_callback_field_value(id flat.NodeId, owner string, expected Type) {
+	if !owner.starts_with('C.') {
+		return
+	}
+	callback := fn_type_from_type(expected) or { return }
+	if !fn_type_has_platform_int(callback) || fn_type_from_type(tc.resolve_type(id)) == none {
+		return
+	}
+	if tc.fn_value_key(tc.a.node(id)) != none || tc.direct_fn_literal_expr(id)
+		|| tc.c_callback_field_owner(id) != none {
+		return
+	}
+	if tc.should_diagnose(id) {
+		tc.record_error(.assignment_mismatch, 'cannot assign a forwarded function value with an `int` parameter/return to C callback field `${owner}`: a function-pointer cast cannot adapt a 32-bit C `int` to a 64-bit V `int`; pass a named function directly, or declare the callback with `i32`', id)
+	}
+}
+
+fn (mut tc TypeChecker) check_c_callback_field_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, expected Type) {
+	if fn_type_from_type(expected) == none {
+		return
+	}
+	owner := tc.c_callback_field_owner(lhs_id) or { return }
+	tc.check_c_callback_field_value(rhs_id, owner, expected)
+}
+
 fn fn_type_has_platform_int(t FnType) bool {
 	if fn_param_is_platform_int(t.return_type) {
 		return true
