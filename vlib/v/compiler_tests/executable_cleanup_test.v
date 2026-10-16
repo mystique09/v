@@ -36,6 +36,11 @@ fn assert_cleanup_registered_after_init(c_code string) {
 }
 
 fn test_executable_mains_invoke_module_cleanup() {
+	entry_point := $if windows {
+		'int wmain(int argc, wchar_t** argv) {'
+	} $else {
+		'int main(int argc, char** argv) {'
+	}
 	root := os.join_path(os.temp_dir(), 'v3_executable_cleanup_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -124,7 +129,7 @@ pub fn answer() int {
 }
 ')
 	assert function_only_run.exit_code == 0, function_only_run.output
-	assert function_only_c.contains('int main(int argc, char** argv) {'), function_only_c
+	assert function_only_c.contains(entry_point), function_only_c
 
 	no_main_source := os.join_path(root, 'no_main.v')
 	no_main_c_path := os.join_path(root, 'no_main.c')
@@ -149,15 +154,14 @@ pub fn answer() int {
 	assert generate_no_main.exit_code == 0, generate_no_main.output
 	no_main_c := os.read_file(no_main_c_path)!
 	assert no_main_c.contains('static void _vno_main_init_caller(void) {'), no_main_c
-	assert no_main_c.contains('i64 exported_answer(void)'), no_main_c
+	assert no_main_c.contains('int exported_answer(void)'), no_main_c
 	assert_cleanup_registered_after_init(no_main_c)
 
-	// A natural-name export (export name equal to the C symbol) is emitted directly
-	// with no wrapper, so its own body must run the guarded initializer; otherwise a
-	// host calling it observes uninitialized globals and skipped module init().
+	// Both wrapped and direct natural-name exports must initialize module globals.
 	direct_export_source := os.join_path(root, 'direct_export.v')
 	direct_export_c_path := os.join_path(root, 'direct_export.c')
-	os.write_file(direct_export_source, "module main
+	os.write_file(direct_export_source, "@[has_globals]
+module main
 
 __global (
 	direct_export_counter int
@@ -171,6 +175,11 @@ fn init() {
 pub fn start() int {
 	return direct_export_counter
 }
+
+@[export: 'initialize']
+pub fn initialize() {
+	direct_export_counter += 1
+}
 ")!
 	generate_direct :=
 		os.exec([v3_bin, '-nocache', '-o', direct_export_c_path, direct_export_source])
@@ -179,18 +188,21 @@ pub fn start() int {
 	assert direct_export_c.contains('int start(void) {'), direct_export_c
 	direct_start_body := direct_export_c.all_after('int start(void) {').all_before('}')
 	assert direct_start_body.contains('_vno_main_init_caller();'), direct_export_c
+	assert direct_export_c.contains('void initialize(void) {'), direct_export_c
+	direct_initialize_body := direct_export_c.all_after('void initialize(void) {').all_before('}')
+	assert direct_initialize_body.contains('_vno_main_init_caller();'), direct_export_c
 
 	explicit_main_no_main_c := executable_cleanup_generate_c(v3_bin, root, 'explicit_main_no_main',
 		'.v', '-d no_main', "fn main() {
 	println('not called')
 }
 ")
-	assert !explicit_main_no_main_c.contains('int main(int argc, char** argv) {'), explicit_main_no_main_c
+	assert !explicit_main_no_main_c.contains(entry_point), explicit_main_no_main_c
 	assert !explicit_main_no_main_c.contains('void main(void) {'), explicit_main_no_main_c
 	assert explicit_main_no_main_c.contains('main__main'), explicit_main_no_main_c
 
 	top_level_no_main_c := executable_cleanup_generate_c(v3_bin, root, 'top_level_no_main', '.vsh',
 		'-d no_main', "println('not called')
 ")
-	assert !top_level_no_main_c.contains('int main(int argc, char** argv) {'), top_level_no_main_c
+	assert !top_level_no_main_c.contains(entry_point), top_level_no_main_c
 }

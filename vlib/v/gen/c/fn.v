@@ -1393,11 +1393,35 @@ fn (g &FlatGen) export_fn_uses_c_abi(module_name string, name string) bool {
 }
 
 fn (g &FlatGen) main_export_needs_internal_name(module_name string, name string) bool {
-	if module_name !in ['', 'main'] || !g.export_fn_uses_c_abi(module_name, name) {
+	if module_name !in ['', 'main'] {
 		return false
 	}
 	export_name := g.export_fn_name_in_module(module_name, name) or { return false }
-	return export_name == g.cname(name.trim_string_left('main.'))
+	if export_name != g.cname(name.trim_string_left('main.')) {
+		return false
+	}
+	if g.export_fn_uses_c_abi(module_name, name) {
+		return true
+	}
+	// A natural export needs the same C integer ABI as a renamed export, while
+	// calls from V must retain the original wider signature.
+	key := fn_decl_module_key(module_name, name)
+	ret := g.fn_decl_ret_types[key] or { g.tc.fn_ret_types[name] or { types.Type(types.void_) } }
+	if export_type_needs_c_int_abi(ret) {
+		return true
+	}
+	params := g.fn_decl_param_types[key] or { g.tc.fn_param_types[name] or { []types.Type{} } }
+	return params.any(export_type_needs_c_int_abi(it))
+}
+
+fn export_type_needs_c_int_abi(typ types.Type) bool {
+	if typ is types.Primitive {
+		return typ.size == 0 && typ.props.has(.integer) && !typ.props.has(.unsigned)
+	}
+	if typ is types.Alias {
+		return export_type_needs_c_int_abi(typ.base_type)
+	}
+	return false
 }
 
 // qualified_fn_name_in_module supports qualified fn name in module handling for c.
@@ -5614,18 +5638,19 @@ fn (mut g FlatGen) export_wrapper_arg_names(node flat.Node) []string {
 }
 
 fn (mut g FlatGen) export_wrapper_return_c_type(node flat.Node, module_name string, fallback types.Type) string {
+	mut ret_type := fallback
 	if abi_decl := g.export_fn_c_abi_decl(module_name, node.value) {
-		abi_type := g.parse_node_type(&abi_decl)
-		return g.c_extern_interop_type_name(abi_type) or { g.fn_return_type_name(abi_type) }
-	}
-	if key := g.export_fn_c_abi_key(module_name, node.value) {
+		ret_type = g.parse_node_type(&abi_decl)
+	} else if key := g.export_fn_c_abi_key(module_name, node.value) {
 		if abi_type := g.tc.c_fn_module_ret_types[key] {
-			return g.c_extern_interop_type_name(abi_type) or {
-				g.fn_return_type_name(abi_type)
-			}
+			ret_type = abi_type
 		}
 	}
-	return g.c_extern_interop_type_name(fallback) or { g.fn_return_type_name(fallback) }
+	// C cannot return an array, including one hidden behind an alias.
+	if _ := array_fixed_type(ret_type) {
+		return g.fn_return_type_name(ret_type)
+	}
+	return g.c_extern_interop_type_name(ret_type) or { g.fn_return_type_name(ret_type) }
 }
 
 fn (mut g FlatGen) write_export_wrapper_params(node flat.Node, module_name string) {
@@ -5670,8 +5695,11 @@ fn (mut g FlatGen) write_export_wrapper_params(node flat.Node, module_name strin
 
 fn (mut g FlatGen) write_export_wrapper_v_c_abi_params(node flat.Node, module_name string) {
 	typed_params := g.fn_node_param_types(node, module_name)
+	needs_implicit_ctx := g.fn_needs_implicit_veb_ctx(node)
+	insert_implicit_ctx_after_first := needs_implicit_ctx && g.fn_has_receiver_param(node)
 	mut param_idx := 0
 	mut written := 0
+	mut implicit_ctx_written := false
 	for i in 0 .. node.children_count {
 		param := g.a.child_node(&node, i)
 		if param.kind != .param {
@@ -5710,6 +5738,19 @@ fn (mut g FlatGen) write_export_wrapper_v_c_abi_params(node flat.Node, module_na
 				g.current_param_use_cname(param.value)
 			})
 		}
+		written++
+		if insert_implicit_ctx_after_first && !implicit_ctx_written {
+			g.write(', ')
+			g.write_implicit_veb_ctx_param()
+			written++
+			implicit_ctx_written = true
+		}
+	}
+	if needs_implicit_ctx && !implicit_ctx_written {
+		if written > 0 {
+			g.write(', ')
+		}
+		g.write_implicit_veb_ctx_param()
 		written++
 	}
 	if written == 0 {
