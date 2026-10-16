@@ -1,14 +1,26 @@
 import os
+import rand
 
 const global_decl_vexe = @VEXE
 const global_decl_tests_dir = os.dir(@FILE)
 const global_decl_v3_dir = os.dir(global_decl_tests_dir)
 const global_decl_vlib_dir = os.dir(global_decl_v3_dir)
 const global_decl_v3_src = os.join_path(global_decl_v3_dir, 'v.v')
+const global_decl_test_root = os.join_path(os.temp_dir(), 'v3_global_decl_${os.getpid()}_${rand.ulid()}')
+
+fn testsuite_begin() {
+	os.mkdir_all(global_decl_test_root) or { panic(err) }
+}
+
+fn testsuite_end() {
+	os.rmdir_all(global_decl_test_root) or {}
+}
 
 fn global_decl_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_global_decl_codegen_test')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(global_decl_test_root, 'compiler') + $if windows { '.exe' } $else { '' }
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.exec([global_decl_vexe, '-gc', 'none', '-path',
 			'${global_decl_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${global_decl_v3_src}'])
@@ -17,9 +29,9 @@ fn global_decl_build_v3() string {
 }
 
 fn global_decl_run_good(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	src := os.join_path(global_decl_test_root, '${name}.v')
 	os.write_file(src, source) or { panic(err) }
-	bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	bin := os.join_path(global_decl_test_root, name)
 	compile := os.exec([v3_bin, '-enable-globals', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -29,8 +41,8 @@ fn global_decl_run_good(v3_bin string, name string, source string) string {
 }
 
 fn global_decl_generate_c(v3_bin string, name string, source string) string {
-	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
-	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	src := os.join_path(global_decl_test_root, '${name}.v')
+	c_path := os.join_path(global_decl_test_root, '${name}.c')
 	os.write_file(src, source) or { panic(err) }
 	generate := os.exec([v3_bin, '-enable-globals', '-cc', 'clang', '-o', c_path, '${src}'])
 	assert generate.exit_code == 0, generate.output
@@ -195,8 +207,13 @@ fn test_global_enum_and_sum_values_use_v_defaults() {
 }
 
 type Payload = string | int
+type ModeAlias = Mode
 
-__global modes = []Mode{len: 2}
+__global modes = []Mode{len: 2, cap: 5}
+__global aliased_modes = []ModeAlias{len: 2}
+__global explicit_modes = []Mode{len: 2, init: .waiting}
+__global reserved_modes = []Mode{cap: 3}
+__global zeros = []int{len: 2}
 __global shared_mode shared Mode
 __global payloads = []Payload{len: 1}
 __global payload shared Payload
@@ -209,6 +226,17 @@ fn describe(value Payload) string {
 }
 
 fn main() {
+	assert modes.len == 2
+	assert modes.cap >= 5
+	assert modes[0] == .ready
+	assert modes[1] == .ready
+	assert aliased_modes[0] == ModeAlias(Mode.ready)
+	assert aliased_modes[1] == ModeAlias(Mode.ready)
+	assert explicit_modes[0] == .waiting
+	assert explicit_modes[1] == .waiting
+	assert reserved_modes.len == 0
+	assert reserved_modes.cap >= 3
+	assert zeros == [0, 0]
 	println(if modes[0] == .ready { 'ready' } else { 'wrong' })
 	shared_mode_description := rlock shared_mode {
 		if shared_mode == .ready { 'shared-ready' } else { 'shared-wrong' }

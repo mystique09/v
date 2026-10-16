@@ -24610,9 +24610,11 @@ fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, ty
 			return false
 		}
 		callee := g.a.child_node(&node, 0)
-		if callee.kind != .ident || callee.value != 'array_new' {
+		if callee.kind != .ident || callee.value !in ['array_new', '__new_array_noscan'] {
 			return false
 		}
+		// Scalar enum arrays can use atomic allocation while still requiring their
+		// first declared value instead of the allocator's zeroed elements.
 		if default_expr := g.global_array_default_elem_expr(typ.elem_type) {
 			allocation_expr := g.expr_to_string_with_expected_type(val_id, types.Type(typ))
 			if trimmed_space(allocation_expr).len > 0 {
