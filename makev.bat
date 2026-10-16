@@ -150,7 +150,7 @@ exit /b !ERRORLEVEL!
 if !flag_local! NEQ 1 (
 	call :download_tcc
 	if !ERRORLEVEL! NEQ 0 goto :error
-	if exist "%vc_dir%" (
+	if exist "%vc_dir%\.git\config" (
 		pushd "%vc_dir%"
 		if !ERRORLEVEL! NEQ 0 goto :error
 		echo Updating vc...
@@ -343,7 +343,7 @@ if !ERRORLEVEL! NEQ 0 goto :compile_error
 goto :success
 
 :download_tcc
-if exist "%tcc_dir%" (
+if exist "%tcc_dir%\.git\config" (
 	pushd "%tcc_dir%"
 	if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 	echo Updating TCC
@@ -484,6 +484,10 @@ exit /b 0
 :bootstrap_tcc
 echo Bootstrapping TCC...
 echo  ^> TCC not found
+if exist "%tcc_dir%" (
+	rmdir /s /q "%tcc_dir%"
+	if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
+)
 if "!tcc_branch!" == "thirdparty-windows-i386" ( echo  ^> Downloading TCC32 from !tcc_url! , branch !tcc_branch! ) else ( echo  ^> Downloading TCC64 from !tcc_url! , branch !tcc_branch! )
 git clone --filter=blob:none --quiet --branch !tcc_branch! !tcc_url! "%tcc_dir%"
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
@@ -493,7 +497,11 @@ exit /b !ERRORLEVEL!
 :cloning_vc
 echo Cloning vc...
 echo  ^> Cloning from remote !vc_url!
-git clone --filter=blob:none --quiet "%vc_url%"
+if exist "%vc_dir%" (
+	rmdir /s /q "%vc_dir%"
+	if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
+)
+git clone --filter=blob:none --quiet "%vc_url%" "%vc_dir%"
 exit /b !ERRORLEVEL!
 
 :build_msvc_stage
@@ -564,7 +572,7 @@ set stage_vflags=-cc "!tcc_exe!"
 call :generate_stage_c
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with TCC
-"!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,-stack=33554432
+"!tcc_exe!" -B"%tcc_dir%" -bt10 -g -w -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% "%tcc_dir%\lib\openlibm.o" -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,-stack=33554432
 set stage_error=!ERRORLEVEL!
 call :try_delete "%V_STAGE_C%"
 exit /b !stage_error!

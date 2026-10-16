@@ -101,6 +101,9 @@ The compatibility filter uses the system `sh`; Bash is not required.
 
 On Windows, `makev.bat` generates the first compiler stage as C and links it directly.
 This also works with older bootstrap snapshots whose process-spawn code is broken.
+It replaces extracted `vc` and `thirdparty/tcc` directories without Git metadata with
+fresh clones before updating them. Use `makev.bat --local` to build with existing dependencies
+without downloading or replacing them.
 
 (Like the note above says, on Windows, use `makev.bat`, instead of `make`.)
 

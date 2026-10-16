@@ -96,6 +96,8 @@ class BootstrapConfigurationTests(unittest.TestCase):
                 link = next(line for line in body.splitlines() if line.startswith(prefix))
                 self.assertIn('"%V_STAGE_C%"', link)
                 self.assertIn('"%V_STAGE%"', link)
+                if compiler == "tcc":
+                    self.assertIn('"%tcc_dir%\\lib\\openlibm.o"', link)
                 self.assertNotIn("%VC_BOOTSTRAP_DEFINE%", link)
                 self.assertIn(
                     link + '\nset stage_error=!ERRORLEVEL!\n'
@@ -1010,6 +1012,92 @@ class BatchExecutionTests(unittest.TestCase):
                     result = self.run_option_parser(Path(directory), arguments)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                     self.assertEqual(result.stdout.strip(), expected)
+
+    def run_repo_sync(self, workdir, has_tcc_git, has_vc_git):
+        tcc_dir = workdir / "thirdparty" / "tcc"
+        vc_dir = workdir / "vc"
+        tcc_dir.mkdir(parents=True, exist_ok=True)
+        vc_dir.mkdir(parents=True, exist_ok=True)
+        (tcc_dir / "stale.txt").write_text("stale tcc", encoding="utf-8")
+        (vc_dir / "stale.txt").write_text("stale vc", encoding="utf-8")
+        if has_tcc_git:
+            (tcc_dir / ".git").mkdir(parents=True, exist_ok=True)
+            (tcc_dir / ".git" / "config").write_text("[core]\n", encoding="utf-8")
+        if has_vc_git:
+            (vc_dir / ".git").mkdir(parents=True, exist_ok=True)
+            (vc_dir / ".git" / "config").write_text("[core]\n", encoding="utf-8")
+        build_body = routine("build")
+        build_body = build_body[:build_body.index("echo Building V...")] + "exit /b 0\n"
+        body = "\n".join([
+            build_body,
+            routine("download_tcc"),
+            routine("patch_tcc_defs"),
+            routine("bootstrap_tcc"),
+            routine("cloning_vc"),
+            ":error",
+            "exit /b 1",
+        ])
+        body = re.sub(r"(?m)^(\s*)git\s+", r"\1call :stub_git ", body)
+        calls = workdir / "git calls.txt"
+        script = "\n".join([
+            "@echo off",
+            "setlocal EnableExtensions EnableDelayedExpansion",
+            "set /a flag_local=0",
+            'set "tcc_dir=' + str(tcc_dir) + '"',
+            'set "tcc_exe=' + str(tcc_dir / "tcc.exe") + '"',
+            'set "tcc_url=https://example.invalid/tccbin"',
+            'set "tcc_branch=thirdparty-windows-amd64"',
+            'set "vc_dir=' + str(vc_dir) + '"',
+            'set "vc_url=https://example.invalid/vc"',
+            'set "test_calls=' + str(calls) + '"',
+            "call :build",
+            "exit /b !ERRORLEVEL!",
+            body,
+            ":stub_git",
+            '>>"%test_calls%" echo !CD!^|%*',
+            'for %%a in (%*) do if "%%~a" == "clone" (',
+            '    if not exist "%tcc_dir%" mkdir "%tcc_dir%"',
+            '    if not exist "%tcc_exe%" >"%tcc_exe%" echo tcc',
+            '    if not exist "%vc_dir%" mkdir "%vc_dir%"',
+            ")",
+            "exit /b 0",
+        ])
+        harness = workdir / "repo sync harness.bat"
+        harness.write_bytes(script.replace("\n", "\r\n").encode("utf-8"))
+        result = subprocess.run(
+            [os.environ.get("ComSpec", "cmd.exe"), "/d", "/c", str(harness)],
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=15,
+            check=False,
+        )
+        recorded = calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
+        return result, recorded
+
+    def test_non_git_tcc_and_vc_directories_are_replaced_with_clones(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            workdir = Path(directory)
+            result, calls = self.run_repo_sync(workdir, has_tcc_git=False, has_vc_git=False)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertFalse((workdir / "thirdparty" / "tcc" / "stale.txt").exists())
+            self.assertFalse((workdir / "vc" / "stale.txt").exists())
+            self.assertTrue(any("clone" in call and "tccbin" in call for call in calls))
+            self.assertTrue(any("clone" in call and "/vc" in call for call in calls))
+            self.assertFalse(any("pull --rebase" in call for call in calls))
+
+    def test_existing_git_tcc_and_vc_directories_pull_in_place(self):
+        with tempfile.TemporaryDirectory(prefix="makev tests ") as directory:
+            workdir = Path(directory)
+            (workdir / "thirdparty" / "tcc" / "tcc.exe").parent.mkdir(parents=True, exist_ok=True)
+            (workdir / "thirdparty" / "tcc" / "tcc.exe").write_text("tcc", encoding="utf-8")
+            result, calls = self.run_repo_sync(workdir, has_tcc_git=True, has_vc_git=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue((workdir / "thirdparty" / "tcc" / "stale.txt").exists())
+            self.assertTrue((workdir / "vc" / "stale.txt").exists())
+            pull_calls = [call for call in calls if "pull --rebase" in call]
+            self.assertEqual(len(pull_calls), 2)
 
 
 if __name__ == "__main__":
