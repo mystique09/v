@@ -13086,15 +13086,16 @@ fn is_lowered_map_key_temp_name(name string) bool {
 	return name.starts_with('__map_key_') || name.starts_with('__map_eq_key_')
 }
 
-// hold_receiver_type_args has a check of the instances report the explicit type
+// hold_receiver_type_args reports the explicit type
 // arguments `call_args` of the cloned call `node` of the method `decl` (for
 // `param_names`, in their order) that give a type parameter the method repeats
 // from its receiver another type than the cloned receiver fixes, and sets them
 // to that type: `b.own[int]()` in the instance of a generic function where `b`
 // is a `Box[string]` (see types.TypeChecker.explicit_receiver_type_args).
-// `callee_id` is the cloned callee. A build leaves them as they are.
+// `callee_id` is the cloned callee. Builds need this constraint too, including
+// targets where the separate concrete-instance check cannot run.
 fn (mut t Transformer) hold_receiver_type_args(decl GenericFnDecl, callee_id flat.NodeId, node flat.Node, param_names []string, mut call_args []u32) {
-	if isnil(t.tc) || !t.tc.check_concrete_generic_bodies || call_args.len != param_names.len
+	if isnil(t.tc) || call_args.len != param_names.len
 		|| int(callee_id) < 0 || int(callee_id) >= t.a.nodes.len {
 		return
 	}

@@ -78,7 +78,8 @@ fn build_receiver_source(name string, source string) os.Result {
 	defer {
 		os.rmdir_all(os.dir(path)) or {}
 	}
-	return os.exec([@VEXE, '-new-compiler', '-nocolor', '-o', path.all_before_last('.'), path])
+	return os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocolor', '-o',
+		path.all_before_last('.'), path])
 }
 
 // error_lines returns `line:col: message` for every error of an output.
@@ -190,6 +191,21 @@ fn test_explicit_types_that_the_receiver_fixes_are_fine() {
 		"\tprintln(b.own())\n\tprintln(b.pair('y'))\n\tprintln(inside(Box[string]{ item: 'a' }))\n" +
 		'\tprintln(b.map[string](fn (x int) string {\n\t\treturn x.str()\n\t}).item)\n'
 	res := check_receiver_source('fine', receiver_source(other_own, body))
+	assert res.exit_code == 0, res.output
+	assert error_lines(res.output) == [], res.output
+}
+
+fn test_a_build_checks_receiver_type_arguments_only_in_the_selected_generic_branch() {
+	source := receiver_source('
+fn selected[T](b Box[T]) T {
+	$if T is int {
+		return b.own[int]()
+	} $else {
+		return b.own[T]()
+	}
+}
+', "\tprintln(selected(Box[int]{ item: 3 }))\n\tprintln(selected(Box[string]{ item: 'a' }))\n")
+	res := build_receiver_source('selected_branch', source)
 	assert res.exit_code == 0, res.output
 	assert error_lines(res.output) == [], res.output
 }
